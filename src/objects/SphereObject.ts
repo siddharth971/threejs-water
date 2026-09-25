@@ -14,8 +14,8 @@ import { clampAndMoveObject, updatePhysics } from './SimulationObjectUtils';
  */
 export class SphereObject implements SimulationObject {
   readonly name = 'Sphere';
-  // Default spawning position of the primary sphere (first instance)
-  readonly position = new THREE.Vector3(-0.4, -0.75, 0.2);
+  // Default spawning position of the primary sphere floating at sea surface
+  readonly position = new THREE.Vector3(0.0, 0.05, 0.0);
   readonly velocity = new THREE.Vector3();
   // Collision/Interaction radius of each sphere
   readonly interactionRadius = 0.25;
@@ -82,6 +82,7 @@ export class SphereObject implements SimulationObject {
         poolLength: { value: 1.0 },
         water: { value: null },
         causticTex: { value: resources.causticTexture },
+        sky: { value: resources.cubemap },
       },
       depthTest: true,
       depthWrite: true,

@@ -15,4 +15,6 @@ export interface SimulationObjectRenderResources {
   lightDirection: THREE.Vector3;
   /** The generated caustic texture representing light focused through the moving water surface. */
   causticTexture: THREE.Texture;
+  /** The sky environment cubemap for reflections on object surfaces. */
+  cubemap: THREE.CubeTexture;
 }

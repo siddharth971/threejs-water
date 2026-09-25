@@ -51,6 +51,7 @@ export class Renderer {
     this.objectRenderResources = {
       lightDirection: this.lightDir,
       causticTexture: this.caustics.texture,
+      cubemap,
     };
 
     // 3. Instantiate pool interior rendering pass

@@ -219,7 +219,8 @@ export class WaterApp {
 
     // Generate initial drops to create ambient starting waves
     this.seedWater();
-    loading.innerHTML = '';
+    loading.style.display = 'none';
+    loading.remove();
 
     // Setup responsive help panel toggle
     const help = document.getElementById('help')!;

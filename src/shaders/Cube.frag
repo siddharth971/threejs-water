@@ -51,6 +51,21 @@ uniform sampler2D water; // Water simulation heightmap
 
 varying vec3 vPosition; // World-space position from vertex shader
 
+// Analytical slope gradient (∂h/∂x, ∂h/∂z) of the 3D seabed dunes
+vec2 getSeabedSlope(vec2 p) {
+  vec2 d1 = vec2(0.14, 0.08) * (cos(p.x * 0.14 + p.y * 0.08) * 0.35);
+  vec2 d2 = vec2(0.07, -0.12) * (-sin(p.x * 0.07 - p.y * 0.12 + 1.4) * 0.25);
+  vec2 d3 = vec2(0.32, 0.22) * (cos(p.x * 0.32 + p.y * 0.22) * 0.10);
+  vec2 d4 = vec2(0.55, -0.40) * (-sin(p.x * 0.55 - p.y * 0.40) * 0.04);
+
+  float r = max(length(p), 0.001);
+  float t = clamp((r - 12.0) / 53.0, 0.0, 1.0);
+  float dDrop = (6.0 * t * (1.0 - t) / 53.0) * 10.0;
+  vec2 dropSlope = (p / r) * dDrop;
+
+  return (d1 + d2 + d3 + d4) - dropSlope;
+}
+
 vec3 getWallColor(vec3 point) {
   // 1. Refracted sunlight illumination direction
   vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);
@@ -62,10 +77,11 @@ vec3 getWallColor(vec3 point) {
   vec3 sandTex2 = texture2D(tiles, uv2).rgb;
   vec3 seabedColor = mix(sandTex1, sandTex2, 0.45) * vec3(1.05, 0.98, 0.88);
 
-  // 3. Procedural sand ripple normal perturbation
+  // 3. Combined macroscopic 3D sand dune slope and microscopic sand ripples
+  vec2 terrainSlope = getSeabedSlope(point.xz);
   float rippleAngle = point.x * 2.8 + sin(point.z * 1.6) * 1.2;
   float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
-  vec3 normal = normalize(vec3(cos(rippleAngle) * 0.06, 1.0, cos(point.z * 1.6) * 0.04));
+  vec3 normal = normalize(vec3(-terrainSlope.x + cos(rippleAngle) * 0.06, 1.0, -terrainSlope.y + cos(point.z * 1.6) * 0.04));
   seabedColor *= 0.88 + 0.24 * sandRipple;
 
   float diffuse = max(0.2, dot(refractedLight, normal));

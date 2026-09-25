@@ -17,7 +17,7 @@ export class CubeObject implements SimulationObject {
   // Bounding half dimensions of each box (0.25 on each side, representing a 0.5x0.5x0.5 cube)
   readonly halfSize = new THREE.Vector3(0.25, 0.25, 0.25);
   // Spawn position of the primary cube
-  readonly position = new THREE.Vector3(-0.4, this.halfSize.y - 1, 0.2);
+  readonly position = new THREE.Vector3(0.0, 0.1, 0.0);
   readonly velocity = new THREE.Vector3();
 
   // Number of active instances to render and simulate

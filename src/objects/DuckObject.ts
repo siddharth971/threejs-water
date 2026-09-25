@@ -24,7 +24,7 @@ export class DuckObject implements SimulationObject {
   // Height clearance threshold to sit properly on the bottom
   readonly floorClearance = 0.265;
   // Default position of the primary duck
-  readonly position = new THREE.Vector3(0.4, this.floorClearance - 1, -0.2);
+  readonly position = new THREE.Vector3(0.0, 0.1, 0.0);
   readonly velocity = new THREE.Vector3();
 
   // Number of active instances to render and simulate

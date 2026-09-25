@@ -100,6 +100,6 @@ export class PoolPass {
    * Generates a wide planar seabed geometry.
    */
   private createGeometry() {
-    return new THREE.PlaneGeometry(600, 600, 96, 96);
+    return new THREE.PlaneGeometry(600, 600, 180, 180);
   }
 }

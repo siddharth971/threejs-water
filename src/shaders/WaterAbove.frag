@@ -254,9 +254,10 @@ vec3 getSphereColor(vec3 point, vec3 center, float radius) {
    *    *
    *    * Distances measured from walls (X=±1), back wall (Z=±1), and floor (Y=-poolHeight)
    */
-  color *= 1.0 - 0.6 / pow((1.0 + radius - abs(point.x)) / radius, 3.0); // Side walls
-  color *= 1.0 - 0.6 / pow((1.0 + radius - abs(point.z)) / radius, 3.0); // Front/back walls
-  color *= 1.0 - 0.6 / pow((point.y + poolHeight + radius) / radius, 3.0); // Floor
+  float floorDist = point.y + (poolHeight > 0.0 ? poolHeight : 1.2) + radius;
+  if (floorDist > 0.0) {
+    color *= clamp(1.0 - 0.4 / pow(max(0.5, floorDist / radius), 2.0), 0.35, 1.0);
+  }
 
   // Compute sphere surface normal (for a sphere, it's simply the normalized radial direction)
   vec3 sphereNormal = (point - center) / radius;
@@ -332,7 +333,39 @@ vec3 getTorusKnotColor(vec3 point, vec3 center) {
 }
 
 /**
- * Computes pool wall shading.
+ * Natural multi-harmonic undersea sand dunes, sandbars, and bathymetric ridges.
+ * Gives realistic 3D elevation variation across the ocean seabed floor.
+ */
+float getSeabedElevation(vec2 p) {
+  float dune1 = sin(p.x * 0.14 + p.y * 0.08) * 0.35;
+  float dune2 = cos(p.x * 0.07 - p.y * 0.12 + 1.4) * 0.25;
+  float dune3 = sin(p.x * 0.32 + p.y * 0.22) * 0.10;
+  float dune4 = cos(p.x * 0.55 - p.y * 0.40) * 0.04;
+  float terrain = dune1 + dune2 + dune3 + dune4;
+
+  // Continental shelf drop-off into deeper sapphire ocean
+  float r = length(p);
+  float dropOff = smoothstep(12.0, 65.0, r) * 10.0;
+  return terrain - dropOff;
+}
+
+// Analytical slope gradient (∂h/∂x, ∂h/∂z) of the 3D seabed dunes
+vec2 getSeabedSlope(vec2 p) {
+  vec2 d1 = vec2(0.14, 0.08) * (cos(p.x * 0.14 + p.y * 0.08) * 0.35);
+  vec2 d2 = vec2(0.07, -0.12) * (-sin(p.x * 0.07 - p.y * 0.12 + 1.4) * 0.25);
+  vec2 d3 = vec2(0.32, 0.22) * (cos(p.x * 0.32 + p.y * 0.22) * 0.10);
+  vec2 d4 = vec2(0.55, -0.40) * (-sin(p.x * 0.55 - p.y * 0.40) * 0.04);
+
+  float r = max(length(p), 0.001);
+  float t = clamp((r - 12.0) / 53.0, 0.0, 1.0);
+  float dDrop = (6.0 * t * (1.0 - t) / 53.0) * 10.0;
+  vec2 dropSlope = (p / r) * dDrop;
+
+  return (d1 + d2 + d3 + d4) - dropSlope;
+}
+
+/**
+ * Computes seabed sand shading.
  */
 vec3 getWallColor(vec3 point) {
   // 1. Refracted sunlight illumination direction
@@ -345,10 +378,11 @@ vec3 getWallColor(vec3 point) {
   vec3 sandTex2 = texture2D(tiles, uv2).rgb;
   vec3 seabedColor = mix(sandTex1, sandTex2, 0.45) * vec3(1.05, 0.98, 0.88);
 
-  // 3. Procedural sand ripple normal perturbation
+  // 3. Combined macroscopic 3D sand dune slope and microscopic sand ripples
+  vec2 terrainSlope = getSeabedSlope(point.xz);
   float rippleAngle = point.x * 2.8 + sin(point.z * 1.6) * 1.2;
   float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
-  vec3 normal = normalize(vec3(cos(rippleAngle) * 0.06, 1.0, cos(point.z * 1.6) * 0.04));
+  vec3 normal = normalize(vec3(-terrainSlope.x + cos(rippleAngle) * 0.06, 1.0, -terrainSlope.y + cos(point.z * 1.6) * 0.04));
   seabedColor *= 0.88 + 0.24 * sandRipple;
 
   float diffuse = max(0.2, dot(refractedLight, normal));
@@ -548,20 +582,27 @@ vec3 getSurfaceRayColor(vec3 origin, vec3 ray, vec3 waterColor) {
     }
 
   } else if (ray.y < 0.0) {
-    // RAY POINTS DOWNWARD - hits seabed floor without artificial pool walls
-    float depth = poolHeight > 0.0 ? poolHeight : 1.0;
+    // RAY POINTS DOWNWARD - hits undulating 3D seabed floor
+    float depth = poolHeight > 0.0 ? poolHeight : 1.2;
     float tFloor = (-depth - origin.y) / ray.y;
     vec3 hit = origin + ray * tFloor;
+    // Parallax depth refinement against 3D bathymetry dunes
+    float elev = getSeabedElevation(hit.xz);
+    tFloor = (-depth + elev - origin.y) / ray.y;
+    hit = origin + ray * tFloor;
+
     vec3 seabed = getWallColor(hit);
 
-    // Beer-Lambert light absorption in tropical sea water
+    // Beer-Lambert light absorption in tropical sea water:
+    // Shallower water over dunes reveals crystal turquoise sand, deep water fades to deep blue
     float distInWater = length(hit - origin);
-    vec3 shallowSea = vec3(0.08, 0.82, 0.86);
+    float waterDepth = max(0.1, -hit.y);
+    vec3 shallowSea = vec3(0.08, 0.85, 0.82);
     vec3 deepSea = vec3(0.01, 0.09, 0.26);
-    float depthRatio = clamp(distInWater * 0.22, 0.0, 1.0);
+    float depthRatio = clamp(waterDepth * 0.18, 0.0, 1.0);
     vec3 waterColorScatter = mix(shallowSea, deepSea, depthRatio);
 
-    float extinction = 1.0 - exp(-distInWater * 0.32);
+    float extinction = 1.0 - exp(-distInWater * 0.28);
     color = mix(seabed, waterColorScatter, extinction);
 
   } else {
