@@ -12,6 +12,15 @@ uniform float poolLength;
 
 varying vec3 vPosition;
 
+// Directional ocean swell displacement (smooth, long-wavelength tropical swells)
+float getOceanSwell(vec2 p, float t) {
+  float w1 = sin(dot(p, vec2(0.24, 0.14)) - t * 0.85) * 0.032;
+  float w2 = sin(dot(p, vec2(-0.16, 0.30)) - t * 1.05 + 1.2) * 0.020;
+  float w3 = sin(dot(p, vec2(0.35, -0.22)) - t * 1.35 + 2.4) * 0.012;
+  float w4 = sin(dot(p, vec2(0.55, 0.45)) - t * 1.8 + 0.5) * 0.006;
+  return w1 + w2 + w3 + w4;
+}
+
 void main() {
   vPosition = position.xzy;
 
@@ -27,11 +36,7 @@ void main() {
 
   vec4 info = texture2D(water, clamp(simUv, 0.0, 1.0));
 
-  // Organic ocean swells across the whole sea
-  float oceanSwell = sin(vPosition.x * 1.5 + time * 1.7) * 0.018
-                   + sin(vPosition.z * 1.8 + time * 2.1 + 1.2) * 0.014
-                   + sin((vPosition.x + vPosition.z) * 2.8 - time * 1.4) * 0.009
-                   + sin((vPosition.x * 0.8 - vPosition.z * 1.2) * 4.2 + time * 2.5) * 0.005;
+  float oceanSwell = getOceanSwell(vPosition.xz, time);
 
   vPosition.y += info.r * inInteractive + oceanSwell;
 

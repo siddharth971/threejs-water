@@ -239,60 +239,82 @@ vec3 getTorusKnotColor(vec3 point, vec3 center) {
  * Calculates wall/floor tiles color.
  */
 vec3 getWallColor(vec3 point) {
-  float scale = 0.65;
-  float rippleAngle = point.x * 10.0 + sin(point.z * 5.0) * 1.8;
-  float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
-  vec3 normal = normalize(vec3(
-    cos(rippleAngle) * 0.08,
-    1.0,
-    cos(point.z * 5.0) * 0.05
-  ));
+  // 1. Refracted sunlight illumination direction
+  vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);
 
-  vec2 uv1 = point.xz * 0.45 + vec2(0.5, 0.5);
-  vec2 uv2 = point.xz * 1.8 + vec2(0.2, 0.7);
+  // 2. Multi-scale tropical coral sand texture sampling
+  vec2 uv1 = point.xz * 0.28;
+  vec2 uv2 = point.xz * 0.95;
   vec3 sandTex1 = texture2D(tiles, uv1).rgb;
   vec3 sandTex2 = texture2D(tiles, uv2).rgb;
-  vec3 wallColor = mix(sandTex1, sandTex2, 0.35) * (0.85 + 0.3 * sandRipple) * vec3(1.04, 0.98, 0.88);
+  vec3 seabedColor = mix(sandTex1, sandTex2, 0.45) * vec3(1.05, 0.98, 0.88);
 
-  scale /= length(point);
+  // 3. Procedural sand ripple normal perturbation
+  float rippleAngle = point.x * 2.8 + sin(point.z * 1.6) * 1.2;
+  float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
+  vec3 normal = normalize(vec3(cos(rippleAngle) * 0.06, 1.0, cos(point.z * 1.6) * 0.04));
+  seabedColor *= 0.88 + 0.24 * sandRipple;
+
+  float diffuse = max(0.2, dot(refractedLight, normal));
+
+  // 4. Smooth, silky flowing caustic light network on the seabed
+  vec2 c1 = point.xz * 1.4 + refractedLight.xz * 0.4 + vec2(time * 0.08, time * 0.06);
+  vec2 c2 = point.xz * 2.2 - vec2(time * 0.07, -time * 0.09);
+  vec2 c3 = point.xz * 3.6 + vec2(time * 0.11, time * 0.05);
+
+  float caustA = pow(sin(c1.x * 2.4 + sin(c1.y * 2.2)) * 0.5 + 0.5, 2.2);
+  float caustB = pow(sin(c2.x * 3.1 + sin(c2.y * 2.7)) * 0.5 + 0.5, 2.2);
+  float caustC = pow(sin(c3.x * 4.2 + sin(c3.y * 3.6)) * 0.5 + 0.5, 2.8);
+  float causticLight = (caustA * 0.65 + caustB * 0.45 + caustC * 0.25) * 1.6;
+
+  // Modulate caustics with real-time interactive water heightmap
+  vec2 simUv = (point.xz / vec2(poolWidth, poolLength)) * 0.5 + 0.5;
+  if (simUv.x >= 0.01 && simUv.x <= 0.99 && simUv.y >= 0.01 && simUv.y <= 0.99) {
+    vec4 wInfo = texture2D(water, simUv);
+    causticLight += clamp(wInfo.r * 8.0, -0.3, 0.8);
+  }
+
+  // 5. Physically grounded soft directional shadows on the seabed
+  float shadow = 1.0;
   if (sphereEnabled) {
     for (int i = 0; i < MAX_SPHERES; i++) {
       if (i >= sphereCount) break;
-      scale *= 1.0 - 0.6 / pow(max(length(point - sphereCenters[i]) / sphereRadii[i], 1.0), 4.0);
+      vec3 toFloor = point - sphereCenters[i];
+      float distAlongRay = dot(toFloor, refractedLight);
+      if (distAlongRay > 0.0) {
+        vec3 rayClosest = sphereCenters[i] + refractedLight * distAlongRay;
+        float perpDist = length(point - rayClosest) / sphereRadii[i];
+        float penumbra = 0.4 + distAlongRay * 0.25;
+        float s = smoothstep(0.5, 0.5 + penumbra, perpDist);
+        shadow = min(shadow, mix(0.3, 1.0, s));
+      }
+      float groundDist = length(point - sphereCenters[i]) / sphereRadii[i];
+      shadow = min(shadow, mix(0.45, 1.0, smoothstep(0.9, 2.2, groundDist)));
     }
   } else if (cubeEnabled) {
     for (int i = 0; i < MAX_CUBES; i++) {
       if (i >= cubeCount) break;
-      float cubeDistance = length((point - cubeCenters[i]) / cubeHalfSizes[i]);
-      scale *= 1.0 - 0.6 / pow(max(cubeDistance, 1.0), 4.0);
-    }
-  } else if (torusKnotEnabled) {
-    for (int i = 0; i < MAX_TORUS_KNOTS; i++) {
-      if (i >= torusKnotCount) break;
-      float knotDistance = length(point - torusKnotCenters[i]);
-      scale *= 1.0 - 0.6 / pow(max(knotDistance / torusKnotShadowRadius, 1.0), 4.0);
-    }
-  } else if (meshEnabled) {
-    for (int i = 0; i < MAX_MESHES; i++) {
-      if (i >= meshCount) break;
-      float meshDistance = length(point - meshCenters[i]);
-      scale *= 1.0 - 0.6 / pow(max(meshDistance / meshShadowRadius, 1.0), 4.0);
+      vec3 toFloor = point - cubeCenters[i];
+      float distAlongRay = dot(toFloor, refractedLight);
+      if (distAlongRay > 0.0) {
+        vec3 rayClosest = cubeCenters[i] + refractedLight * distAlongRay;
+        float perpDist = length((point - rayClosest) / cubeHalfSizes[i]);
+        shadow = min(shadow, mix(0.3, 1.0, smoothstep(0.6, 1.8, perpDist)));
+      }
     }
   }
 
-  vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);
-  float diffuse = max(0.0, dot(refractedLight, normal));
-  vec2 causticCoord = 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5;
-  vec4 caustic = texture2D(causticTex, causticCoord);
-  float causticMask = clamp(1.0 - (length(point.xz) - 0.8) / 0.4, 0.0, 1.0);
-  scale += diffuse * (caustic.r * 3.2 * caustic.g) * causticMask;
-  scale += diffuse * 0.4;
+  // 6. Composite seabed lighting
+  float lightIntensity = diffuse * (0.65 + causticLight * shadow) + 0.35;
+  lightIntensity *= shadow;
 
+  // 7. Deep Ocean Falloff at outer perimeter
   float distFromCenter = length(point.xz);
-  float abyssFactor = clamp((distFromCenter - 1.2) / 4.5, 0.0, 1.0);
-  wallColor = mix(wallColor, vec3(0.01, 0.08, 0.22), abyssFactor * 0.95);
+  float shallowExtent = max(poolWidth, poolLength);
+  float abyssFactor = smoothstep(shallowExtent * 0.85, shallowExtent * 1.5 + 40.0, distFromCenter);
+  seabedColor = mix(seabedColor, vec3(0.01, 0.08, 0.22), abyssFactor * 0.96);
 
-  return wallColor * scale;
+  return seabedColor * lightIntensity;
 }
 
 /**
@@ -431,6 +453,15 @@ vec3 getSurfaceRayColor(vec3 origin, vec3 ray, vec3 waterColor) {
   return color;
 }
 
+// Directional ocean swell analytical slope / gradient (∂h/∂x, ∂h/∂z)
+vec2 getOceanSlope(vec2 p, float t) {
+  vec2 s1 = vec2(0.24, 0.14) * (cos(dot(p, vec2(0.24, 0.14)) - t * 0.85) * 0.032);
+  vec2 s2 = vec2(-0.16, 0.30) * (cos(dot(p, vec2(-0.16, 0.30)) - t * 1.05 + 1.2) * 0.020);
+  vec2 s3 = vec2(0.35, -0.22) * (cos(dot(p, vec2(0.35, -0.22)) - t * 1.35 + 2.4) * 0.012);
+  vec2 s4 = vec2(0.55, 0.45) * (cos(dot(p, vec2(0.55, 0.45)) - t * 1.8 + 0.5) * 0.006);
+  return s1 + s2 + s3 + s4;
+}
+
 void main() {
   float pWidth = poolWidth > 0.0 ? poolWidth : 1.0;
   float pLength = poolLength > 0.0 ? poolLength : 1.0;
@@ -448,12 +479,9 @@ void main() {
     info = texture2D(water, coord);
   }
 
-  // 3. Reconstruct surface normal vector with ocean swell
+  // 3. Reconstruct surface normal vector with directional ocean swell
   vec2 simSlope = clamp(info.ba, vec2(-0.999), vec2(0.999));
-  vec2 oceanSlope = vec2(
-    cos(vPosition.x * 1.5 + time * 1.7) * 0.025 + cos((vPosition.x + vPosition.z) * 2.8 - time * 1.4) * 0.02,
-    cos(vPosition.z * 1.8 + time * 2.1 + 1.2) * 0.024 + cos((vPosition.x + vPosition.z) * 2.8 - time * 1.4) * 0.02
-  );
+  vec2 oceanSlope = getOceanSlope(vPosition.xz, time);
   vec2 totalSlope = clamp(simSlope * inInteractive + oceanSlope, vec2(-0.95), vec2(0.95));
   float slopeLengthSq = min(dot(totalSlope, totalSlope), 0.95);
   vec3 normal = normalize(vec3(totalSlope.x, sqrt(max(0.001, 1.0 - slopeLengthSq)), totalSlope.y));

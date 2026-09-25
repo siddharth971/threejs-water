@@ -46,6 +46,7 @@ export class PoolPass {
         poolHeight: { value: 1.0 },
         poolWidth: { value: 10.0 },
         poolLength: { value: 10.0 },
+        time: { value: 0 },
       },
       side: THREE.DoubleSide,
       depthTest: true,
@@ -90,6 +91,7 @@ export class PoolPass {
     const activeMaterial = this.mesh.material as THREE.ShaderMaterial;
     activeMaterial.uniforms.water.value = water.textureA.texture;
     activeMaterial.uniforms.light.value.copy(this.state.lightDirection);
+    activeMaterial.uniforms.time.value = performance.now() / 1000;
     this.state.syncUniforms(activeMaterial);
     activeMaterial.uniformsNeedUpdate = true;
   }
