@@ -1,35 +1,35 @@
 precision highp float;
 
 /**
- * POOL WALLS/FLOOR FRAGMENT SHADER
+ * TROPICAL SEABED FRAGMENT SHADER
  *
- * Renders the interior surfaces of the swimming pool with:
- * - Tiled texture mapping (triplanar projection)
- * - Underwater caustic lighting patterns
- * - Soft shadows from objects in the pool
- * - Water color tinting for submerged surfaces
- *
- * The shader handles both submerged portions (with caustics) and
- * above-water portions (rim area with direct lighting).
+ * Renders the sandy ocean floor with:
+ * - High-detail tropical coral sand texture with multi-scale blending
+ * - Organic underwater sand ripple shading and micro-relief
+ * - Real-time refracted caustic patterns dancing on the sand
+ * - Soft ambient occlusion shadows from submerged objects
+ * - Physically inspired tropical sea water depth absorption (Beer-Lambert)
+ * - Seamless fade into deep oceanic abyss at the perimeter
  */
 
 // Optical constants
 const float IOR_AIR = 1.0;
 const float IOR_WATER = 1.333;
 
-// Color tint applied to underwater surfaces (blue-green absorption)
-const vec3 underwaterColor = vec3(0.4, 0.9, 1.0);
-const float poolHeight = 1.0;
+// Tropical water tinting
+const vec3 shallowSeaColor = vec3(0.08, 0.82, 0.86);
+const vec3 deepSeaColor = vec3(0.01, 0.08, 0.22);
 const float torusKnotShadowRadius = 0.13;
 
 // Scene uniforms
 uniform vec3 light; // Light direction (toward sun)
+uniform float poolHeight;
 #define MAX_SPHERES 10
 uniform vec3 sphereCenters[MAX_SPHERES];
 uniform float sphereRadii[MAX_SPHERES];
 uniform int sphereCount;
 uniform bool sphereEnabled;
-uniform vec3 cubeCenter; // Interactive cube position
+uniform vec3 cubeCenter;
 uniform vec3 cubeHalfSize;
 uniform bool cubeEnabled;
 #define MAX_TORUS_KNOTS 10
@@ -42,82 +42,35 @@ uniform int meshCount;
 uniform float meshBoundingRadius;
 uniform float meshShadowRadius;
 uniform bool meshEnabled;
-uniform sampler2D tiles; // Pool tile texture
-uniform sampler2D causticTex; // Pre-computed caustic light map
+uniform sampler2D tiles; // Seabed sand texture
+uniform sampler2D causticTex; // Dynamic caustic light map
 uniform sampler2D water; // Water simulation heightmap
 
 varying vec3 vPosition; // World-space position from vertex shader
 
-/**
- * Ray-AABB intersection for shadow edge calculations.
- * Returns parametric distances (tNear, tFar) along the ray.
- */
-vec2 intersectCube(vec3 origin, vec3 ray, vec3 cubeMin, vec3 cubeMax) {
-  vec3 tMin = (cubeMin - origin) / ray;
-  vec3 tMax = (cubeMax - origin) / ray;
-  vec3 t1 = min(tMin, tMax);
-  vec3 t2 = max(tMin, tMax);
-  float tNear = max(max(t1.x, t1.y), t1.z);
-  float tFar = min(min(t2.x, t2.y), t2.z);
-  return vec2(tNear, tFar);
-}
-
-/**
- * Computes the final color for a point on the pool walls or floor.
- *
- * RENDERING FEATURES:
- * 1. Triplanar texture mapping - tiles projected based on surface orientation
- * 2. Proximity-based ambient occlusion from scene objects
- * 3. Diffuse lighting from refracted sunlight
- * 4. Caustic patterns for underwater surfaces
- * 5. Edge fadeout for above-water portions
- */
 vec3 getWallColor(vec3 point) {
-  float scale = 0.5; // Base brightness multiplier
-  vec3 wallColor;
-  vec3 normal;
+  float scale = 0.65; // Base brightness multiplier
 
-  /**
- * * TRIPLANAR TEXTURE MAPPING
- *    *
- *    * Instead of traditional UV unwrapping, we project the tile texture
- *    * from each axis direction. The dominant axis determines which
- *    * projection to use, ensuring seamless tiling on all pool surfaces.
- */
-  if (abs(point.x) > 0.999) {
-    // LEFT/RIGHT WALLS (perpendicular to X axis)
-    // Project texture along X, using YZ coordinates for UVs
-    wallColor = texture2D(tiles, point.yz * 0.5 + vec2(1.0, 0.5)).rgb;
-    normal = vec3(-point.x, 0.0, 0.0); // Points inward (-X or +X)
-  } else if (abs(point.z) > 0.999) {
-    // FRONT/BACK WALLS (perpendicular to Z axis)
-    // Project texture along Z, using XY coordinates for UVs
-    wallColor = texture2D(tiles, point.yx * 0.5 + vec2(1.0, 0.5)).rgb;
-    normal = vec3(0.0, 0.0, -point.z); // Points inward
-  } else {
-    // POOL FLOOR (perpendicular to Y axis)
-    // Project texture from above, using XZ coordinates for UVs
-    wallColor = texture2D(tiles, point.xz * 0.5 + 0.5).rgb;
-    normal = vec3(0.0, 1.0, 0.0); // Points up
-  }
+  // 1. Procedural sand ripple normal perturbation
+  float rippleAngle = point.x * 10.0 + sin(point.z * 5.0) * 1.8;
+  float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
+  vec3 normal = normalize(vec3(
+    cos(rippleAngle) * 0.08,
+    1.0,
+    cos(point.z * 5.0) * 0.05
+  ));
 
-  /**
- * * DISTANCE-BASED ATTENUATION
- *    *
- *    * Surfaces farther from the center receive less ambient light,
- *    * simulating the natural falloff of indirect illumination.
- */
-  scale /= length(point);
+  // 2. Multi-scale dual texture sampling to avoid repetitive tiling
+  vec2 uv1 = point.xz * 0.45 + vec2(0.5, 0.5);
+  vec2 uv2 = point.xz * 1.8 + vec2(0.2, 0.7);
+  vec3 sandTex1 = texture2D(tiles, uv1).rgb;
+  vec3 sandTex2 = texture2D(tiles, uv2).rgb;
+  vec3 seabedColor = mix(sandTex1, sandTex2, 0.35) * (0.85 + 0.3 * sandRipple);
 
-  /**
- * * OBJECT PROXIMITY SHADOWS (Soft Ambient Occlusion)
- *    *
- *    * Objects in the pool cast soft shadows on nearby surfaces.
- *    * Uses inverse power falloff: 1 - 0.9 / d^4
- *    *
- *    * Close to object (d ≈ 1): shadow ≈ 0.1 (dark)
- *    * Far from object (d >> 1): shadow → 1 (full brightness)
- */
+  // Warm tropical coral sand tone
+  seabedColor *= vec3(1.04, 0.98, 0.88);
+
+  // 3. Proximity-based ambient occlusion from floating/submerged objects
   if (sphereEnabled) {
     for (int i = 0; i < MAX_SPHERES; i++) {
       if (i >= sphereCount) break;
@@ -140,58 +93,41 @@ vec3 getWallColor(vec3 point) {
     }
   }
 
-  // Compute underwater light direction (refracted through water surface)
+  // 4. Refracted sunlight illumination
   vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);
-  float diffuse = max(0.0, dot(refractedLight, normal)); // Lambertian term
+  float diffuse = max(0.0, dot(refractedLight, normal));
 
-  // Check if this point is underwater
-  vec4 info = texture2D(water, point.xz * 0.5 + 0.5);
+  // 5. Dynamic Caustics Projection onto the seabed
+  // Sample caustics with slant compensation for light angle
+  vec2 causticCoord = 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5;
+  vec4 caustic = texture2D(causticTex, causticCoord);
 
-  if (point.y < info.r) {
-    /**
- * * UNDERWATER CAUSTIC LIGHTING
- *      *
- *      * Sample the caustic texture at the projected position.
- *      * The projection accounts for the light's slant angle through water.
- *      *
- *      * caustic.r = intensity (brightness)
- *      * caustic.g = shadow factor (object occlusion)
- */
-    vec4 caustic = texture2D(
-      causticTex,
-      0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5
-    );
-    scale += diffuse * caustic.r * 2.0 * caustic.g;
-  } else {
-    /**
- * * ABOVE-WATER LIGHTING (Pool Rim)
- *      *
- *      * For the portion above the waterline, we fade the lighting
- *      * smoothly to avoid hard edges where water meets the rim.
- *      * Uses a sigmoid function for smooth transition.
- */
-    vec2 t = intersectCube(
-      point,
-      refractedLight,
-      vec3(-1.0, -poolHeight, -1.0),
-      vec3(1.0, 2.0, 1.0)
-    );
-    diffuse *=
-      1.0 /
-      (1.0 +
-        exp(-200.0 / (1.0 + 10.0 * (t.y - t.x)) * (point.y + refractedLight.y * t.y - 2.0 / 12.0)));
-    scale += diffuse * 0.5;
-  }
+  // Smooth caustic fade at edges of interactive area
+  float causticMask = clamp(1.0 - (length(point.xz) - 0.8) / 0.4, 0.0, 1.0);
+  scale += diffuse * (caustic.r * 3.2 * caustic.g) * causticMask;
+  scale += diffuse * 0.4; // Ambient sea floor bounce
 
-  return wallColor * scale;
+  // 6. Deep Ocean Falloff at outer perimeter
+  float distFromCenter = length(point.xz);
+  float abyssFactor = clamp((distFromCenter - 1.2) / 4.5, 0.0, 1.0);
+  seabedColor = mix(seabedColor, deepSeaColor, abyssFactor * 0.95);
+
+  return seabedColor * scale;
 }
 
 void main() {
-  gl_FragColor = vec4(getWallColor(vPosition), 1.0);
+  vec3 color = getWallColor(vPosition);
 
-  // Add blue tinting modulation for underwater fragments
-  vec4 info = texture2D(water, vPosition.xz * 0.5 + 0.5);
-  if (vPosition.y < info.r) {
-    gl_FragColor.rgb *= underwaterColor * 1.2;
-  }
+  // Beer-Lambert underwater absorption: deeper water absorbs red wavelengths first
+  float depth = -vPosition.y;
+  float extinction = clamp(depth * 0.35, 0.0, 1.0);
+  vec3 waterTint = mix(shallowSeaColor, deepSeaColor, extinction);
+  color = mix(color, color * waterTint * 1.5, clamp(depth * 0.4, 0.0, 0.85));
+
+  // Blend into deep blue ocean distance fog
+  float dist = length(vPosition.xz);
+  float fog = clamp((dist - 1.5) / 5.0, 0.0, 1.0);
+  color = mix(color, deepSeaColor, fog * 0.9);
+
+  gl_FragColor = vec4(color, 1.0);
 }

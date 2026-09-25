@@ -21,7 +21,10 @@ export class SimulationObjectRegistry {
   // from Sphere to Cube, the Cube spawns where the Sphere was (fallback).
   private readonly sharedPosition = new THREE.Vector3();
   // Holds the coordinate positions of all instances shared across objects.
-  private readonly sharedPositions: THREE.Vector3[] = Array.from({ length: 10 }, () => new THREE.Vector3());
+  private readonly sharedPositions: THREE.Vector3[] = Array.from(
+    { length: 10 },
+    () => new THREE.Vector3()
+  );
 
   constructor(private readonly scene: THREE.Scene) {}
 
@@ -76,7 +79,14 @@ export class SimulationObjectRegistry {
    * restores the shared position coordinates, clamps it to the pool bounds to prevent clipping,
    * and triggers the entrance displacement waves.
    */
-  select(name: string, water: Water, instanceCount: number, poolWidth = 1.0, poolHeight = 1.0, poolLength = 1.0) {
+  select(
+    name: string,
+    water: Water,
+    instanceCount: number,
+    poolWidth = 1.0,
+    poolHeight = 1.0,
+    poolLength = 1.0
+  ) {
     const nextObject = name === NO_OBJECT ? null : this.objects.get(name);
     if (name !== NO_OBJECT && !nextObject) {
       throw new Error(`Unknown simulation object "${name}"`);

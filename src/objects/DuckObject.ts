@@ -48,7 +48,7 @@ export class DuckObject implements SimulationObject {
 
   // Displacement strategy mapping multiple overlapping spheres to water heightmap adjustments
   readonly displacement: CompoundSphereWaterDisplacement;
-  
+
   // Optics description for raytracing reflections/refractions in the water shader
   get optics() {
     return {
@@ -169,9 +169,7 @@ export class DuckObject implements SimulationObject {
 
       // Combine parents transformations into a single base matrix
       this.baseMatrix.makeScale(scale, scale, scale);
-      const offsetTranslation = new THREE.Vector3()
-        .copy(center)
-        .multiplyScalar(-scale);
+      const offsetTranslation = new THREE.Vector3().copy(center).multiplyScalar(-scale);
       offsetTranslation.y -= box.min.y * scale;
       this.baseMatrix.setPosition(offsetTranslation);
       this.baseMatrix.multiply(localMatrix);
@@ -190,7 +188,7 @@ export class DuckObject implements SimulationObject {
       this.mesh.add(this.instancedMesh);
 
       this.loaded = true;
-      this.mesh.visible = this.enabled && (this.instanceCount > 0);
+      this.mesh.visible = this.enabled && this.instanceCount > 0;
     } catch (error) {
       console.error('Failed to load duck model:', error);
     }
@@ -254,7 +252,7 @@ export class DuckObject implements SimulationObject {
     if (this.instancedMesh) {
       this.instancedMesh.count = this.instanceCount;
     }
-    this.mesh.visible = this.loaded && (this.instanceCount > 0);
+    this.mesh.visible = this.loaded && this.instanceCount > 0;
     this.enabled = true;
     this.syncPreviousPosition();
   }
@@ -279,10 +277,10 @@ export class DuckObject implements SimulationObject {
     }
 
     for (let i = 0; i < this.instanceCount; i++) {
-      const isDragged = (i === this.draggedInstanceIndex && context.dragging);
+      const isDragged = i === this.draggedInstanceIndex && context.dragging;
       const duckContext = {
         ...context,
-        dragging: isDragged
+        dragging: isDragged,
       };
 
       updatePhysics(
@@ -387,11 +385,9 @@ export class DuckObject implements SimulationObject {
     // Compose instance matrices
     const tempMatrix = new THREE.Matrix4();
     for (let i = 0; i < this.instanceCount; i++) {
-      tempMatrix.makeTranslation(
-        this.positions[i].x,
-        this.positions[i].y,
-        this.positions[i].z
-      ).multiply(this.baseMatrix);
+      tempMatrix
+        .makeTranslation(this.positions[i].x, this.positions[i].y, this.positions[i].z)
+        .multiply(this.baseMatrix);
       this.instancedMesh.setMatrixAt(i, tempMatrix);
     }
     this.instancedMesh.instanceMatrix.needsUpdate = true;

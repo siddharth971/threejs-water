@@ -41,7 +41,7 @@ export class CubeObject implements SimulationObject {
 
   // Displacement strategy representing how moving box boundaries alter water heights
   readonly displacement = new BoxWaterDisplacement(this.halfSize);
-  
+
   // Optics description for raytracing reflections/refractions in the water shader
   get optics() {
     return {
@@ -89,7 +89,11 @@ export class CubeObject implements SimulationObject {
     });
 
     // Create instanced box mesh (1x1x1 unit geometry scaled via instance matrices)
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.material, this.maxCubes);
+    this.mesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      this.material,
+      this.maxCubes
+    );
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
     this.mesh.count = this.instanceCount;
@@ -172,13 +176,20 @@ export class CubeObject implements SimulationObject {
     if (!this.enabled) return;
 
     for (let i = 0; i < this.instanceCount; i++) {
-      const isDragged = (i === this.draggedInstanceIndex && context.dragging);
+      const isDragged = i === this.draggedInstanceIndex && context.dragging;
       const cubeContext = {
         ...context,
-        dragging: isDragged
+        dragging: isDragged,
       };
 
-      updatePhysics(seconds, this.positions[i], this.velocities[i], cubeContext, this.halfSize.y, this.halfSize.y);
+      updatePhysics(
+        seconds,
+        this.positions[i],
+        this.velocities[i],
+        cubeContext,
+        this.halfSize.y,
+        this.halfSize.y
+      );
 
       this.displacement.move(
         water,
@@ -271,7 +282,11 @@ export class CubeObject implements SimulationObject {
 
     // Compose instance matrices (translation, rotation, scaling)
     const tempMatrix = new THREE.Matrix4();
-    const tempScale = new THREE.Vector3(this.halfSize.x * 2.0, this.halfSize.y * 2.0, this.halfSize.z * 2.0);
+    const tempScale = new THREE.Vector3(
+      this.halfSize.x * 2.0,
+      this.halfSize.y * 2.0,
+      this.halfSize.z * 2.0
+    );
     const tempRotation = new THREE.Quaternion();
 
     for (let i = 0; i < this.instanceCount; i++) {

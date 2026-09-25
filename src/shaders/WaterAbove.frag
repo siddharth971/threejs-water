@@ -17,11 +17,11 @@ precision highp float;
 const float IOR_AIR = 1.0; // n₁: air (approximately vacuum)
 const float IOR_WATER = 1.333; // n₂: water at 20°C for visible light
 
-// Water tinting colors for light absorption simulation (Beer's Law approximation)
-const vec3 abovewaterColor = vec3(0.25, 1.0, 1.25); // Tint when looking down into water
-const vec3 underwaterColor = vec3(0.4, 0.9, 1.0); // Tint when looking up from underwater
+// Tropical water tinting colors for light absorption simulation (Beer's Law)
+const vec3 abovewaterColor = vec3(0.08, 0.85, 0.88); // Crystal turquoise surface tint
+const vec3 underwaterColor = vec3(0.04, 0.75, 0.82); // Underwater ambient tint
 
-const float poolHeight = 1.0; // Pool depth below rest water level
+uniform float poolHeight; // Seabed depth
 const float torusKnotShadowRadius = 0.13; // Shadow falloff radius for torus knot
 
 uniform vec3 light;
@@ -58,8 +58,9 @@ uniform mat4 reflectionViewProjectionMatrix;
 
 varying vec3 vPosition;
 
-const float poolWidth = 1.0;
-const float poolLength = 1.0;
+uniform float poolWidth;
+uniform float poolLength;
+uniform float time;
 #include "./MeshWaterOptics.glsl"
 
 /**
@@ -334,19 +335,23 @@ vec3 getTorusKnotColor(vec3 point, vec3 center) {
  * Computes pool wall shading.
  */
 vec3 getWallColor(vec3 point) {
-  float scale = 0.5;
-  vec3 wallColor;
-  vec3 normal;
-  if (abs(point.x) > 0.999) {
-    wallColor = texture2D(tiles, point.yz * 0.5 + vec2(1.0, 0.5)).rgb;
-    normal = vec3(-point.x, 0.0, 0.0);
-  } else if (abs(point.z) > 0.999) {
-    wallColor = texture2D(tiles, point.yx * 0.5 + vec2(1.0, 0.5)).rgb;
-    normal = vec3(0.0, 0.0, -point.z);
-  } else {
-    wallColor = texture2D(tiles, point.xz * 0.5 + 0.5).rgb;
-    normal = vec3(0.0, 1.0, 0.0);
-  }
+  float scale = 0.65;
+
+  // 1. Procedural sand ripple normal
+  float rippleAngle = point.x * 10.0 + sin(point.z * 5.0) * 1.8;
+  float sandRipple = sin(rippleAngle) * 0.5 + 0.5;
+  vec3 normal = normalize(vec3(
+    cos(rippleAngle) * 0.08,
+    1.0,
+    cos(point.z * 5.0) * 0.05
+  ));
+
+  // 2. Multi-scale sand texture sampling
+  vec2 uv1 = point.xz * 0.45 + vec2(0.5, 0.5);
+  vec2 uv2 = point.xz * 1.8 + vec2(0.2, 0.7);
+  vec3 sandTex1 = texture2D(tiles, uv1).rgb;
+  vec3 sandTex2 = texture2D(tiles, uv2).rgb;
+  vec3 wallColor = mix(sandTex1, sandTex2, 0.35) * (0.85 + 0.3 * sandRipple) * vec3(1.04, 0.98, 0.88);
 
   scale /= length(point);
   if (sphereEnabled) {
@@ -376,26 +381,16 @@ vec3 getWallColor(vec3 point) {
 
   vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);
   float diffuse = max(0.0, dot(refractedLight, normal));
-  vec4 info = texture2D(water, point.xz * 0.5 + 0.5);
-  if (point.y < info.r) {
-    vec4 caustic = texture2D(
-      causticTex,
-      0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5
-    );
-    scale += diffuse * caustic.r * 2.0 * caustic.g;
-  } else {
-    vec2 t = intersectCube(
-      point,
-      refractedLight,
-      vec3(-1.0, -poolHeight, -1.0),
-      vec3(1.0, 2.0, 1.0)
-    );
-    diffuse *=
-      1.0 /
-      (1.0 +
-        exp(-200.0 / (1.0 + 10.0 * (t.y - t.x)) * (point.y + refractedLight.y * t.y - 2.0 / 12.0)));
-    scale += diffuse * 0.5;
-  }
+  vec2 causticCoord = 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5;
+  vec4 caustic = texture2D(causticTex, causticCoord);
+  float causticMask = clamp(1.0 - (length(point.xz) - 0.8) / 0.4, 0.0, 1.0);
+  scale += diffuse * (caustic.r * 3.2 * caustic.g) * causticMask;
+  scale += diffuse * 0.4;
+
+  float distFromCenter = length(point.xz);
+  float abyssFactor = clamp((distFromCenter - 1.2) / 4.5, 0.0, 1.0);
+  wallColor = mix(wallColor, vec3(0.01, 0.08, 0.22), abyssFactor * 0.95);
+
   return wallColor * scale;
 }
 
@@ -534,32 +529,28 @@ vec3 getSurfaceRayColor(vec3 origin, vec3 ray, vec3 waterColor) {
     }
 
   } else if (ray.y < 0.0) {
-    // RAY POINTS DOWNWARD - hits pool floor or walls
-    vec2 t = intersectCube(origin, ray, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));
-    color = getWallColor(origin + ray * t.y);
+    // RAY POINTS DOWNWARD - hits seabed floor without artificial pool walls
+    float depth = poolHeight > 0.0 ? poolHeight : 1.0;
+    float tFloor = (-depth - origin.y) / ray.y;
+    vec3 hit = origin + ray * tFloor;
+    vec3 seabed = getWallColor(hit);
+
+    // Beer-Lambert light absorption in tropical sea water
+    float distInWater = length(hit - origin);
+    vec3 shallowSea = vec3(0.08, 0.82, 0.86);
+    vec3 deepSea = vec3(0.01, 0.09, 0.26);
+    float depthRatio = clamp(distInWater * 0.22, 0.0, 1.0);
+    vec3 waterColorScatter = mix(shallowSea, deepSea, depthRatio);
+
+    float extinction = 1.0 - exp(-distInWater * 0.32);
+    color = mix(seabed, waterColorScatter, extinction);
 
   } else {
-    // RAY POINTS UPWARD - exits water into air
-    vec2 t = intersectCube(origin, ray, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));
-    vec3 hit = origin + ray * t.y;
-
-    if (hit.y < 2.0 / 12.0) {
-      // Hit pool wall above water line
-      color = getWallColor(hit);
-    } else {
-      // Escaped to sky - sample environment cubemap
-      color = textureCube(sky, ray).rgb;
-
-      /**
- * * SUN SPOT (Specular Highlight)
- *        *
- *        * Add a bright spot where the ray direction aligns with the sun.
- *        * Uses a high-power falloff (5000) for a small, intense highlight.
- *        *
- *        * Color (10, 8, 6) gives a warm yellow-white sun appearance.
- */
-      color += vec3(pow(max(0.0, dot(light, ray)), 5000.0)) * vec3(10.0, 8.0, 6.0);
-    }
+    // RAY POINTS UPWARD - exits water into open tropical sky (no pool rim!)
+    color = textureCube(sky, ray).rgb;
+    float sunDot = max(0.0, dot(light, ray));
+    color += vec3(pow(sunDot, 4000.0)) * vec3(12.0, 9.5, 7.0);
+    color += vec3(pow(sunDot, 40.0)) * vec3(0.3, 0.25, 0.2);
   }
 
   /**
@@ -578,98 +569,49 @@ vec3 getSurfaceRayColor(vec3 origin, vec3 ray, vec3 waterColor) {
 }
 
 void main() {
-  /**
- * * STEP 1: COORDINATE MAPPING
- *    * Convert world XZ position to UV texture coordinates [0,1]
- *    * World space: X,Z ∈ [-1, 1] → UV: [0, 1]
- */
-  vec2 coord = vPosition.xz * 0.5 + 0.5;
-  vec4 info = texture2D(water, coord);
+  float pWidth = poolWidth > 0.0 ? poolWidth : 1.0;
+  float pLength = poolLength > 0.0 ? poolLength : 1.0;
 
-  /**
- * * STEP 2: PARALLAX DISPLACEMENT (Iterative Refinement)
- *    *
- *    * Problem: The water surface is displaced vertically, but we're sampling
- *    * from a fixed horizontal grid. A naive lookup would misalign the surface
- *    * features with their actual 3D positions.
- *    *
- *    * Solution: Iteratively offset the UV lookup in the direction of the
- *    * surface gradient (stored in BA channels). This approximates ray-heightmap
- *    * intersection without expensive per-pixel raymarching.
- *    *
- *    * The gradient (info.ba) points toward higher water; we step along it
- *    * to converge toward the correct sampling point.
- */
+  // 1. Coordinate mapping within central sea simulation grid
+  vec2 coord = (vPosition.xz / vec2(pWidth, pLength)) * 0.5 + 0.5;
+  vec2 edgeDist = abs(vPosition.xz / vec2(pWidth, pLength));
+  float inInteractive = clamp(1.0 - (max(edgeDist.x, edgeDist.y) - 0.75) / 0.25, 0.0, 1.0);
+
+  vec4 info = texture2D(water, clamp(coord, 0.0, 1.0));
+
+  // 2. Parallax displacement
   for (int i = 0; i < 5; i++) {
-    coord = clamp(coord + info.ba * 0.005, 0.0, 1.0); // Small steps along gradient direction
-    info = texture2D(water, coord); // Resample at new location
+    coord = clamp(coord + info.ba * 0.005, 0.0, 1.0);
+    info = texture2D(water, coord);
   }
 
-  /**
- * * STEP 3: NORMAL RECONSTRUCTION
- *    *
- *    * The water texture stores surface slope components:
- *    *   info.b = ∂height/∂x (x-component of gradient)
- *    *   info.a = ∂height/∂z (z-component of gradient)
- *    *
- *    * For a heightfield, the normal is N = normalize(-∂h/∂x, 1, -∂h/∂z)
- *    * The y-component is computed from the unit normal constraint:
- *    *   |N| = 1  →  Nx² + Ny² + Nz² = 1  →  Ny = sqrt(1 - Nx² - Nz²)
- */
-  vec2 slope = clamp(info.ba, vec2(-0.999), vec2(0.999));
-  float slopeLengthSq = min(dot(slope, slope), 0.999);
-  vec3 normal = normalize(vec3(slope.x, sqrt(max(0.001, 1.0 - slopeLengthSq)), slope.y));
+  // 3. Normal reconstruction with combined interactive simulation and ocean swell slopes
+  vec2 simSlope = clamp(info.ba, vec2(-0.999), vec2(0.999));
+  vec2 oceanSlope = vec2(
+    cos(vPosition.x * 1.5 + time * 1.7) * 0.025 + cos((vPosition.x + vPosition.z) * 2.8 - time * 1.4) * 0.02,
+    cos(vPosition.z * 1.8 + time * 2.1 + 1.2) * 0.024 + cos((vPosition.x + vPosition.z) * 2.8 - time * 1.4) * 0.02
+  );
+  vec2 totalSlope = clamp(simSlope * inInteractive + oceanSlope, vec2(-0.95), vec2(0.95));
+  float slopeLengthSq = min(dot(totalSlope, totalSlope), 0.95);
+  vec3 normal = normalize(vec3(totalSlope.x, sqrt(max(0.001, 1.0 - slopeLengthSq)), totalSlope.y));
 
-  // STEP 4: View ray from camera to this surface point
+  // 4. View ray from camera to water surface
   vec3 incomingRay = normalize(vPosition - eye);
-
-  /**
- * * STEP 5: REFLECTION AND REFRACTION RAYS
- *    *
- *    * reflect(I, N): R = I - 2*(I·N)*N
- *    *   Mirrors the incident ray about the normal
- *    *
- *    * refract(I, N, eta): Snell's Law implementation
- *    *   n₁ sin(θ₁) = n₂ sin(θ₂)
- *    *   eta = n₁/n₂ = IOR_AIR/IOR_WATER ≈ 0.75
- *    *   Returns the transmitted ray direction
- */
   vec3 reflectedRay = reflect(incomingRay, normal);
   vec3 refractedRay = refract(incomingRay, normal, IOR_AIR / IOR_WATER);
 
-  /**
- * * STEP 6: FRESNEL REFLECTANCE (Schlick's Approximation)
- *    *
- *    * The Fresnel equations describe how much light reflects vs. refracts
- *    * at an interface, depending on the incident angle and polarization.
- *    *
- *    * Schlick's approximation: F(θ) = F₀ + (1 - F₀)(1 - cos(θ))⁵
- *    *
- *    * Where:
- *    *   F₀ = ((n₁ - n₂)/(n₁ + n₂))² ≈ 0.02 for air-water at normal incidence
- *    *   θ = angle between view ray and surface normal
- *    *
- *    * Physical behavior:
- *    *   - Looking straight down (θ ≈ 0°): mostly see refracted (underwater) image
- *    *   - Looking at grazing angle (θ → 90°): mostly see reflected (sky) image
- *    *
- *    * We use a modified version with F₀ = 0.25 and power = 3 for artistic control.
- */
-  float fresnel = mix(0.25, 1.0, pow(1.0 - dot(normal, -incomingRay), 3.0));
+  // 5. Fresnel reflectance
+  float fresnel = mix(0.18, 1.0, pow(1.0 - dot(normal, -incomingRay), 4.0));
 
-  // STEP 7: Ray trace to find colors for both reflected and refracted rays
+  // 6. Ray trace colors
   vec3 reflectedColor = getSurfaceRayColor(vPosition, reflectedRay, abovewaterColor);
   vec3 refractedColor = getSurfaceRayColor(vPosition, refractedRay, abovewaterColor);
 
-  // 8. Blend pre-rendered refraction and reflection passes for interactive objects
-  // For torus knots: only blend texture when knot is above water (partially emerged)
-  // When fully submerged, rely on SDF ray tracing to avoid circular bounding sphere artifact
+  // 7. Blend pre-rendered reflection/refraction passes for interactive objects
   if (torusKnotEnabled) {
-    // Check if any torus knot is above water surface (needs texture blending for above-water portion)
     for (int i = 0; i < MAX_TORUS_KNOTS; i++) {
       if (i >= torusKnotCount) break;
-      vec4 knotWaterInfo = texture2D(water, torusKnotCenters[i].xz * 0.5 + 0.5);
-      // Only blend texture if this knot's center is above the local water height
+      vec4 knotWaterInfo = texture2D(water, clamp((torusKnotCenters[i].xz / vec2(pWidth, pLength)) * 0.5 + 0.5, 0.0, 1.0));
       if (torusKnotCenters[i].y > knotWaterInfo.r) {
         float hit = intersectSphereBounds(vPosition, refractedRay, torusKnotCenters[i], 0.31);
         if (hit < 1.0e6) {
@@ -693,6 +635,9 @@ void main() {
     }
   }
 
-  // 9. Mix colors based on fresnel intensity
-  gl_FragColor = vec4(mix(refractedColor, reflectedColor, fresnel), 1.0);
+  // 8. Composite with Fresnel blending and sun specular glitter on ocean crests
+  vec3 halfVec = normalize(-incomingRay + light);
+  float sunGlitter = pow(max(0.0, dot(normal, halfVec)), 350.0);
+  vec3 finalColor = mix(refractedColor, reflectedColor, fresnel) + sunGlitter * vec3(1.2, 1.1, 0.95) * 0.75;
+  gl_FragColor = vec4(finalColor, 1.0);
 }

@@ -41,7 +41,7 @@ export class WaterApp {
     // Establish WebGL Context
     this.webglRenderer = new THREE.WebGLRenderer({ antialias: true });
     this.webglRenderer.setPixelRatio(window.devicePixelRatio);
-    this.webglRenderer.setClearColor(0x000000);
+    this.webglRenderer.setClearColor(0x072033);
     container.appendChild(this.webglRenderer.domElement);
 
     // Load repeating tiles and sky cubemaps asynchronously
@@ -346,7 +346,14 @@ export class WaterApp {
     const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
 
     // Switch object in registry and clamp its position
-    this.objects.select(name, this.water, this.controls.instanceCount, poolWidth, poolHeight, poolLength);
+    this.objects.select(
+      name,
+      this.water,
+      this.controls.instanceCount,
+      poolWidth,
+      poolHeight,
+      poolLength
+    );
     this.renderer.setWaterOptics(this.objects.optics);
 
     this.interaction.cancelDrag();

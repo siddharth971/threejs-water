@@ -37,7 +37,10 @@ export class WaterOpticsState {
   /** The centers of the instanced cubes. */
   readonly cubeCenters: THREE.Vector3[] = Array.from({ length: 10 }, () => new THREE.Vector3());
   /** The halfSizes of the instanced cubes. */
-  readonly cubeHalfSizes: THREE.Vector3[] = Array.from({ length: 10 }, () => new THREE.Vector3(0.25, 0.25, 0.25));
+  readonly cubeHalfSizes: THREE.Vector3[] = Array.from(
+    { length: 10 },
+    () => new THREE.Vector3(0.25, 0.25, 0.25)
+  );
   /** The number of active cubes. */
   cubeCount = 0;
   /** Whether the cube/box obstacle is currently enabled. */
@@ -46,7 +49,10 @@ export class WaterOpticsState {
   /** The center coordinate of the torus knot obstacle (fallback). */
   readonly torusKnotCenter = new THREE.Vector3();
   /** The centers of the instanced torus knots. */
-  readonly torusKnotCenters: THREE.Vector3[] = Array.from({ length: 10 }, () => new THREE.Vector3());
+  readonly torusKnotCenters: THREE.Vector3[] = Array.from(
+    { length: 10 },
+    () => new THREE.Vector3()
+  );
   /** The number of active torus knots. */
   torusKnotCount = 0;
   /** Whether the torus knot obstacle is currently enabled. */
@@ -135,22 +141,22 @@ export class WaterOpticsState {
     return {
       sphereCenter: { value: this.sphereCenter.clone() },
       sphereRadius: { value: this.sphereRadius },
-      sphereCenters: { value: this.sphereCenters.map(c => c.clone()) },
+      sphereCenters: { value: this.sphereCenters.map((c) => c.clone()) },
       sphereRadii: { value: [...this.sphereRadii] },
       sphereCount: { value: this.sphereCount },
       sphereEnabled: { value: this.sphereEnabled },
       cubeCenter: { value: this.cubeCenter.clone() },
       cubeHalfSize: { value: this.cubeHalfSize.clone() },
-      cubeCenters: { value: this.cubeCenters.map(c => c.clone()) },
-      cubeHalfSizes: { value: this.cubeHalfSizes.map(h => h.clone()) },
+      cubeCenters: { value: this.cubeCenters.map((c) => c.clone()) },
+      cubeHalfSizes: { value: this.cubeHalfSizes.map((h) => h.clone()) },
       cubeCount: { value: this.cubeCount },
       cubeEnabled: { value: this.cubeEnabled },
       torusKnotCenter: { value: this.torusKnotCenter.clone() },
-      torusKnotCenters: { value: this.torusKnotCenters.map(c => c.clone()) },
+      torusKnotCenters: { value: this.torusKnotCenters.map((c) => c.clone()) },
       torusKnotCount: { value: this.torusKnotCount },
       torusKnotEnabled: { value: this.torusKnotEnabled },
       meshCenter: { value: this.meshCenter.clone() },
-      meshCenters: { value: this.meshCenters.map(c => c.clone()) },
+      meshCenters: { value: this.meshCenters.map((c) => c.clone()) },
       meshCount: { value: this.meshCount },
       meshBoundingRadius: { value: this.meshBoundingRadius },
       meshShadowRadius: { value: this.meshShadowRadius },

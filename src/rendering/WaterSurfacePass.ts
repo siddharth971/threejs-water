@@ -89,7 +89,7 @@ export class WaterSurfacePass {
       objectRefractionTexture
     );
 
-    const geometry = new THREE.PlaneGeometry(2, 2, 200, 200);
+    const geometry = new THREE.PlaneGeometry(28, 28, 256, 256);
     this.aboveMesh = new THREE.Mesh(geometry, this.aboveMaterial);
     this.belowMesh = new THREE.Mesh(geometry.clone(), this.belowMaterial);
     this.aboveMesh.frustumCulled = false;
@@ -112,6 +112,17 @@ export class WaterSurfacePass {
     poolHeight: number,
     poolLength: number
   ) {
+    if (this.aboveMaterial.uniforms.poolWidth) {
+      this.aboveMaterial.uniforms.poolWidth.value = poolWidth;
+      this.aboveMaterial.uniforms.poolHeight.value = poolHeight;
+      this.aboveMaterial.uniforms.poolLength.value = poolLength;
+    }
+    if (this.belowMaterial.uniforms.poolWidth) {
+      this.belowMaterial.uniforms.poolWidth.value = poolWidth;
+      this.belowMaterial.uniforms.poolHeight.value = poolHeight;
+      this.belowMaterial.uniforms.poolLength.value = poolLength;
+    }
+
     if (shape === 'Box') {
       this.aboveMesh.material = this.aboveMaterial;
       this.belowMesh.material = this.belowMaterial;
@@ -231,6 +242,10 @@ export class WaterSurfacePass {
         water: { value: null },
         sky: { value: cubemap },
         eye: { value: new THREE.Vector3() },
+        time: { value: 0 },
+        poolWidth: { value: 1.0 },
+        poolLength: { value: 1.0 },
+        poolHeight: { value: 1.0 },
       },
       side,
       depthTest: true,
@@ -266,6 +281,9 @@ export class WaterSurfacePass {
     material.uniforms.reflectionViewProjectionMatrix.value.copy(
       objectMatrices.reflectionViewProjectionMatrix
     );
+    if (material.uniforms.time) {
+      material.uniforms.time.value = performance.now() / 1000;
+    }
     this.state.syncUniforms(material);
     material.uniformsNeedUpdate = true;
   }

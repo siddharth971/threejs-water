@@ -41,7 +41,7 @@ export class SphereObject implements SimulationObject {
 
   // Displacement strategy mapping coordinates to heightmap texture changes
   readonly displacement = new SphereWaterDisplacement(this.interactionRadius);
-  
+
   // Optics description for raytraced reflections/refractions in the water shader
   get optics() {
     return {
@@ -88,7 +88,11 @@ export class SphereObject implements SimulationObject {
     });
 
     // Create instanced mesh with unit sphere (radius 1).
-    this.mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 32, 32), this.material, this.maxSpheres);
+    this.mesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 32, 32),
+      this.material,
+      this.maxSpheres
+    );
     this.mesh.frustumCulled = false;
     this.mesh.count = this.instanceCount;
   }
@@ -172,10 +176,10 @@ export class SphereObject implements SimulationObject {
     if (!this.enabled) return;
 
     for (let i = 0; i < this.instanceCount; i++) {
-      const isDragged = (i === this.draggedInstanceIndex && context.dragging);
+      const isDragged = i === this.draggedInstanceIndex && context.dragging;
       const sphereContext = {
         ...context,
-        dragging: isDragged
+        dragging: isDragged,
       };
 
       // Run physical simulation calculations
@@ -278,7 +282,11 @@ export class SphereObject implements SimulationObject {
 
     // Compose instance matrices (translation, rotation, scaling)
     const tempMatrix = new THREE.Matrix4();
-    const tempScale = new THREE.Vector3(this.interactionRadius, this.interactionRadius, this.interactionRadius);
+    const tempScale = new THREE.Vector3(
+      this.interactionRadius,
+      this.interactionRadius,
+      this.interactionRadius
+    );
     const tempRotation = new THREE.Quaternion();
 
     for (let i = 0; i < this.instanceCount; i++) {

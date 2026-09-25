@@ -20,8 +20,8 @@ export async function loadSceneAssets(): Promise<SceneAssets> {
   // Use Vite's BASE_URL for correct paths in both dev and production
   const base = import.meta.env.BASE_URL;
 
-  // LoadRepeating pool tile texture
-  const tileTexture = await new THREE.TextureLoader().loadAsync(`${base}tiles.jpg`);
+  // Load tropical seabed sand texture
+  const tileTexture = await new THREE.TextureLoader().loadAsync(`${base}sand.jpg`);
   tileTexture.wrapS = THREE.RepeatWrapping;
   tileTexture.wrapT = THREE.RepeatWrapping;
   tileTexture.minFilter = THREE.LinearMipmapLinearFilter;

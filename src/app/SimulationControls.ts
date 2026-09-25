@@ -200,14 +200,14 @@ export class SimulationControls {
       }
     }
 
-    // --- Pool Shape Controls Group ---
-    const poolFolder = gui.addFolder('Pool');
+    // --- Sea Environment Controls Group ---
+    const poolFolder = gui.addFolder('Sea Environment');
     poolFolder.close();
 
-    // Pool Shape dropdown selector ('Box' or 'Rounded Box')
+    // Seabed Shape dropdown selector ('Box' or 'Rounded Box')
     poolFolder
       .add(this.state, 'poolShape', ['Box', 'Rounded Box'])
-      .name('Pool Shape')
+      .name('Seabed Shape')
       .onChange((shape: string) => {
         this.poolShape = shape;
         this.updatePoolShapeControllers();
@@ -226,29 +226,29 @@ export class SimulationControls {
         callbacks.onCornerRadiusChange?.(cornerRadius);
       });
 
-    // Pool Width slider
+    // Sea Width slider
     this.poolWidthController = poolFolder
       .add(this.state, 'poolWidth', 0.5, 3.0, 0.05)
-      .name('Pool Width')
+      .name('Sea Width')
       .onChange((width: number) => {
         this.poolWidth = width;
         this.updateCornerRadiusLimit();
         callbacks.onPoolWidthChange?.(width);
       });
 
-    // Pool Depth slider
+    // Water Depth slider
     this.poolHeightController = poolFolder
-      .add(this.state, 'poolHeight', 0.3, 2.0, 0.05)
-      .name('Pool Depth')
+      .add(this.state, 'poolHeight', 0.3, 2.5, 0.05)
+      .name('Water Depth')
       .onChange((height: number) => {
         this.poolHeight = height;
         callbacks.onPoolHeightChange?.(height);
       });
 
-    // Pool Length slider
+    // Sea Length slider
     this.poolLengthController = poolFolder
       .add(this.state, 'poolLength', 0.5, 3.0, 0.05)
-      .name('Pool Length')
+      .name('Sea Length')
       .onChange((length: number) => {
         this.poolLength = length;
         this.updateCornerRadiusLimit();
@@ -342,16 +342,13 @@ export class SimulationControls {
    * hides them for standard flat Box shape.
    */
   private updatePoolShapeControllers() {
+    this.poolWidthController.show();
+    this.poolHeightController.show();
+    this.poolLengthController.show();
     if (this.state.poolShape === 'Rounded Box') {
       this.cornerRadiusController.show();
-      this.poolWidthController.show();
-      this.poolHeightController.show();
-      this.poolLengthController.show();
     } else {
       this.cornerRadiusController.hide();
-      this.poolWidthController.hide();
-      this.poolHeightController.hide();
-      this.poolLengthController.hide();
     }
   }
 
