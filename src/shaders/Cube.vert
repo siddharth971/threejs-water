@@ -8,6 +8,8 @@
  */
 
 uniform float poolHeight;
+uniform float poolWidth;
+uniform float poolLength;
 varying vec3 vPosition;
 
 void main() {
@@ -18,9 +20,11 @@ void main() {
   float depth = poolHeight > 0.0 ? poolHeight : 1.0;
   vPosition.y = -depth;
 
-  // Gentle continental shelf drop-off into deep ocean
+  // Gentle continental shelf drop-off into deep ocean starting beyond the shallow sea area
+  float shallowRadius = max(poolWidth, poolLength);
+  if (shallowRadius < 1.0) shallowRadius = 1.0;
   float r = length(vPosition.xz);
-  vPosition.y -= smoothstep(1.2, 7.0, r) * 2.0;
+  vPosition.y -= smoothstep(shallowRadius * 0.9, shallowRadius * 1.5 + 40.0, r) * 10.0;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(vPosition, 1.0);
 }

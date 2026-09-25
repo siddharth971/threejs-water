@@ -89,7 +89,7 @@ export class WaterSurfacePass {
       objectRefractionTexture
     );
 
-    const geometry = new THREE.PlaneGeometry(28, 28, 256, 256);
+    const geometry = new THREE.PlaneGeometry(600, 600, 256, 256);
     this.aboveMesh = new THREE.Mesh(geometry, this.aboveMaterial);
     this.belowMesh = new THREE.Mesh(geometry.clone(), this.belowMaterial);
     this.aboveMesh.frustumCulled = false;
@@ -243,8 +243,8 @@ export class WaterSurfacePass {
         sky: { value: cubemap },
         eye: { value: new THREE.Vector3() },
         time: { value: 0 },
-        poolWidth: { value: 1.0 },
-        poolLength: { value: 1.0 },
+        poolWidth: { value: 10.0 },
+        poolLength: { value: 10.0 },
         poolHeight: { value: 1.0 },
       },
       side,

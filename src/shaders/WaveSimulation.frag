@@ -78,8 +78,9 @@ void main() {
    *   info.g += 2.0 * (average - info.r)
    * which matches the original isotropic simulation rate.
    */
-  float stabilityScale = min(1.0, min(poolWidth * poolWidth, poolLength * poolLength));
-  info.g += 0.5 * stabilityScale * (d2h_dx2 / (poolWidth * poolWidth) + d2h_dz2 / (poolLength * poolLength));
+  float aspectX = clamp(poolWidth / max(poolLength, 0.001), 0.25, 4.0);
+  float aspectZ = clamp(poolLength / max(poolWidth, 0.001), 0.25, 4.0);
+  info.g += 0.5 * (d2h_dx2 / aspectX + d2h_dz2 / aspectZ);
 
   /**
    * DAMPING (Energy Dissipation)

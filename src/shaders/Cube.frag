@@ -24,6 +24,8 @@ const float torusKnotShadowRadius = 0.13;
 // Scene uniforms
 uniform vec3 light; // Light direction (toward sun)
 uniform float poolHeight;
+uniform float poolWidth;
+uniform float poolLength;
 #define MAX_SPHERES 10
 uniform vec3 sphereCenters[MAX_SPHERES];
 uniform float sphereRadii[MAX_SPHERES];
@@ -98,18 +100,19 @@ vec3 getWallColor(vec3 point) {
   float diffuse = max(0.0, dot(refractedLight, normal));
 
   // 5. Dynamic Caustics Projection onto the seabed
-  // Sample caustics with slant compensation for light angle
-  vec2 causticCoord = 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5;
+  float causticRadius = max(poolWidth, poolLength);
+  vec2 causticCoord = (0.75 / max(poolWidth, 1.0)) * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5;
   vec4 caustic = texture2D(causticTex, causticCoord);
 
   // Smooth caustic fade at edges of interactive area
-  float causticMask = clamp(1.0 - (length(point.xz) - 0.8) / 0.4, 0.0, 1.0);
+  float causticMask = clamp(1.0 - (length(point.xz) - causticRadius * 0.85) / (causticRadius * 0.2 + 0.001), 0.0, 1.0);
   scale += diffuse * (caustic.r * 3.2 * caustic.g) * causticMask;
   scale += diffuse * 0.4; // Ambient sea floor bounce
 
   // 6. Deep Ocean Falloff at outer perimeter
   float distFromCenter = length(point.xz);
-  float abyssFactor = clamp((distFromCenter - 1.2) / 4.5, 0.0, 1.0);
+  float shallowExtent = max(poolWidth, poolLength);
+  float abyssFactor = clamp((distFromCenter - shallowExtent * 0.9) / 60.0, 0.0, 1.0);
   seabedColor = mix(seabedColor, deepSeaColor, abyssFactor * 0.95);
 
   return seabedColor * scale;
@@ -120,14 +123,15 @@ void main() {
 
   // Beer-Lambert underwater absorption: deeper water absorbs red wavelengths first
   float depth = -vPosition.y;
-  float extinction = clamp(depth * 0.35, 0.0, 1.0);
+  float extinction = clamp(depth * 0.25, 0.0, 1.0);
   vec3 waterTint = mix(shallowSeaColor, deepSeaColor, extinction);
-  color = mix(color, color * waterTint * 1.5, clamp(depth * 0.4, 0.0, 0.85));
+  color = mix(color, color * waterTint * 1.4, clamp(depth * 0.3, 0.0, 0.85));
 
   // Blend into deep blue ocean distance fog
   float dist = length(vPosition.xz);
-  float fog = clamp((dist - 1.5) / 5.0, 0.0, 1.0);
-  color = mix(color, deepSeaColor, fog * 0.9);
+  float shallowExtent = max(poolWidth, poolLength);
+  float fog = clamp((dist - (shallowExtent + 15.0)) / 60.0, 0.0, 1.0);
+  color = mix(color, deepSeaColor, fog * 0.98);
 
   gl_FragColor = vec4(color, 1.0);
 }

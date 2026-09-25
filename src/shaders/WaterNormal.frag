@@ -46,18 +46,20 @@ void main() {
 
   // Tangent in X direction: (Δx_phys, Δheight_x, 0)
   // Points from current cell toward the right neighbor
+  float normScaleX = delta.x * 2.0 * clamp(poolWidth, 0.5, 3.0);
   vec3 dx = vec3(
-    delta.x * 2.0 * poolWidth, // X component: physical grid spacing
+    normScaleX, // X component: physical grid spacing
     texture2D(tInput, vec2(coord.x + delta.x, coord.y)).r - info.r, // Y component: height difference
     0.0 // Z component: no change in Z
   );
 
   // Tangent in Z direction: (0, Δheight_z, Δz_phys)
   // Points from current cell toward the top neighbor (Z mapped to texture Y)
+  float normScaleZ = delta.y * 2.0 * clamp(poolLength, 0.5, 3.0);
   vec3 dy = vec3(
     0.0, // X component: no change in X
     texture2D(tInput, vec2(coord.x, coord.y + delta.y)).r - info.r, // Y component: height difference
-    delta.y * 2.0 * poolLength // Z component: physical grid spacing
+    normScaleZ // Z component: physical grid spacing
   );
 
   /**

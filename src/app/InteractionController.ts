@@ -129,8 +129,8 @@ export class InteractionController {
     const pointOnPlane = origin.clone().addScaledVector(direction, -origin.y / direction.y);
     // Perform hit testing against active obstacle
     const objectHit = objects.active?.hitTest(origin, direction) ?? null;
-    const poolWidth = controls.poolShape === 'Box' ? 1.0 : controls.poolWidth;
-    const poolLength = controls.poolShape === 'Box' ? 1.0 : controls.poolLength;
+    const poolWidth = controls.poolWidth;
+    const poolLength = controls.poolLength;
 
     if (objectHit) {
       this.mode = InteractionMode.MoveObject;
@@ -139,7 +139,11 @@ export class InteractionController {
       this.dragPlaneNormal = new THREE.Vector3(0, 0, -1)
         .applyQuaternion(camera.quaternion)
         .negate();
-    } else if (Math.abs(pointOnPlane.x) < poolWidth && Math.abs(pointOnPlane.z) < poolLength) {
+    } else if (
+      direction.y < 0 &&
+      Math.abs(pointOnPlane.x) < poolWidth &&
+      Math.abs(pointOnPlane.z) < poolLength
+    ) {
       this.mode = InteractionMode.AddDrops;
       this.duringDrag(x, y, time);
     } else {
@@ -153,9 +157,9 @@ export class InteractionController {
    */
   private duringDrag(x: number, y: number, time: number) {
     const { water, renderer, objects, cameraController, controls, draw } = this.dependencies;
-    const poolWidth = controls.poolShape === 'Box' ? 1.0 : controls.poolWidth;
-    const poolHeight = controls.poolShape === 'Box' ? 1.0 : controls.poolHeight;
-    const poolLength = controls.poolShape === 'Box' ? 1.0 : controls.poolLength;
+    const poolWidth = controls.poolWidth;
+    const poolHeight = controls.poolHeight;
+    const poolLength = controls.poolLength;
 
     if (this.mode === InteractionMode.AddDrops) {
       // Find intersection with y=0 water surface and inject ripple drop

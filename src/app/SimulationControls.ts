@@ -5,6 +5,7 @@ const MIN_STRAIGHT_POOL_EDGE = 0.0;
 export interface SimulationControlCallbacks {
   onObjectChange(name: string): void;
   onPausedChange(paused: boolean): void;
+  onGravityChange?(enabled: boolean): void;
   onLightFollowsCameraChange?(): void;
   onPoolShapeChange?(shape: string): void;
   onCornerRadiusChange?(radius: number): void;
@@ -23,30 +24,30 @@ export interface SimulationControlCallbacks {
 export class SimulationControls {
   // Public variables queried by the simulation update loop
   paused = false;
-  physicsEnabled = false;
-  densityEnabled = false;
-  density = 0.9;
+  physicsEnabled = true;
+  densityEnabled = true;
+  density = 0.8;
   lightFollowsCamera = false;
   poolShape = 'Box';
   cornerRadius = 0.1;
-  poolWidth = 1.0;
+  poolWidth = 10.0;
   poolHeight = 1.0;
-  poolLength = 1.0;
+  poolLength = 10.0;
   instanceCount = 1;
 
   // The local state object bound directly to GUI controls
   private readonly state = {
     object: 'Sphere',
-    gravity: false,
-    densityEnabled: false,
-    density: 0.9,
+    gravity: true,
+    densityEnabled: true,
+    density: 0.8,
     paused: false,
     lightFollowsCamera: false,
     poolShape: 'Box',
     cornerRadius: 0.1,
-    poolWidth: 1.0,
+    poolWidth: 10.0,
     poolHeight: 1.0,
-    poolLength: 1.0,
+    poolLength: 10.0,
     instanceCount: 1,
     updateLightDirection: () => {
       this.callbacks.onUpdateLightDirection?.();
@@ -102,6 +103,7 @@ export class SimulationControls {
       .name('Toggle Gravity')
       .onChange((enabled: boolean) => {
         this.physicsEnabled = enabled;
+        callbacks.onGravityChange?.(enabled);
       });
 
     // Toggle custom density calculations
@@ -228,7 +230,7 @@ export class SimulationControls {
 
     // Sea Width slider
     this.poolWidthController = poolFolder
-      .add(this.state, 'poolWidth', 0.5, 3.0, 0.05)
+      .add(this.state, 'poolWidth', 0.5, 50.0, 0.5)
       .name('Sea Width')
       .onChange((width: number) => {
         this.poolWidth = width;
@@ -238,7 +240,7 @@ export class SimulationControls {
 
     // Water Depth slider
     this.poolHeightController = poolFolder
-      .add(this.state, 'poolHeight', 0.3, 2.5, 0.05)
+      .add(this.state, 'poolHeight', 0.3, 3.5, 0.05)
       .name('Water Depth')
       .onChange((height: number) => {
         this.poolHeight = height;
@@ -247,7 +249,7 @@ export class SimulationControls {
 
     // Sea Length slider
     this.poolLengthController = poolFolder
-      .add(this.state, 'poolLength', 0.5, 3.0, 0.05)
+      .add(this.state, 'poolLength', 0.5, 50.0, 0.5)
       .name('Sea Length')
       .onChange((length: number) => {
         this.poolLength = length;
@@ -292,12 +294,13 @@ export class SimulationControls {
   }
 
   /**
-   * Action trigger to manually toggle gravity via G key binding.
+   * Action trigger to manually toggle gravity via G key binding or button.
    */
   togglePhysics() {
     this.physicsEnabled = !this.physicsEnabled;
     this.state.gravity = this.physicsEnabled;
     this.gravityController.updateDisplay();
+    this.callbacks.onGravityChange?.(this.physicsEnabled);
   }
 
   /**

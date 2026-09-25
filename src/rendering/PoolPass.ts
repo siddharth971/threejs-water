@@ -44,6 +44,8 @@ export class PoolPass {
         causticTex: { value: causticTexture },
         water: { value: null },
         poolHeight: { value: 1.0 },
+        poolWidth: { value: 10.0 },
+        poolLength: { value: 10.0 },
       },
       side: THREE.DoubleSide,
       depthTest: true,
@@ -60,18 +62,20 @@ export class PoolPass {
    *
    * @param _shape The shape description.
    * @param _cornerRadius Corner radius.
-   * @param _poolWidth The half-width of the sea.
+   * @param poolWidth The half-width of the sea.
    * @param poolHeight The depth of the seabed.
-   * @param _poolLength The half-length of the sea.
+   * @param poolLength The half-length of the sea.
    */
   setPoolShape(
     _shape: string,
     _cornerRadius: number,
-    _poolWidth: number,
+    poolWidth: number,
     poolHeight: number,
-    _poolLength: number
+    poolLength: number
   ) {
     this.boxMaterial.uniforms.poolHeight.value = poolHeight;
+    this.boxMaterial.uniforms.poolWidth.value = poolWidth;
+    this.boxMaterial.uniforms.poolLength.value = poolLength;
     this.mesh.geometry = this.boxGeometry;
     this.mesh.material = this.boxMaterial;
   }
@@ -94,6 +98,6 @@ export class PoolPass {
    * Generates a wide planar seabed geometry.
    */
   private createGeometry() {
-    return new THREE.PlaneGeometry(30, 30, 96, 96);
+    return new THREE.PlaneGeometry(600, 600, 96, 96);
   }
 }

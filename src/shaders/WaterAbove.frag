@@ -639,5 +639,12 @@ void main() {
   vec3 halfVec = normalize(-incomingRay + light);
   float sunGlitter = pow(max(0.0, dot(normal, halfVec)), 350.0);
   vec3 finalColor = mix(refractedColor, reflectedColor, fresnel) + sunGlitter * vec3(1.2, 1.1, 0.95) * 0.75;
+
+  // Seamless horizon ocean mist: seamlessly dissolves water surface into the sky cubemap at the horizon
+  float distToCam = length(vPosition - eye);
+  vec3 skyHorizon = textureCube(sky, incomingRay).rgb;
+  float horizonMist = smoothstep(120.0, 280.0, distToCam);
+  finalColor = mix(finalColor, skyHorizon, horizonMist);
+
   gl_FragColor = vec4(finalColor, 1.0);
 }

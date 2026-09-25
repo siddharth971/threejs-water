@@ -19,7 +19,7 @@ export class WaterApp {
   private readonly gravity = new THREE.Vector3(0, -4, 0);
   private readonly cameraController = new CameraController();
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+  private readonly camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1500);
 
   private webglRenderer!: THREE.WebGLRenderer;
   private renderer!: Renderer;
@@ -72,16 +72,17 @@ export class WaterApp {
           this.objects.active.instanceCount = count;
           this.objects.active.setEnabled(true, this.water);
           this.renderer.setWaterOptics(this.objects.optics);
-          this.water.updateNormals(
-            this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth,
-            this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength
-          );
+          this.water.updateNormals(this.controls.poolWidth, this.controls.poolLength);
           this.renderer.updateCaustics(this.water);
           if (this.controls.paused) this.draw();
         }
       },
       onPausedChange: (paused) => {
+        this.updatePauseUI(paused);
         if (paused) this.draw();
+      },
+      onGravityChange: (enabled) => {
+        this.updateGravityUI(enabled);
       },
       onLightFollowsCameraChange: () => {
         if (this.controls.paused) this.draw();
@@ -92,9 +93,9 @@ export class WaterApp {
         else this.renderer.updateCaustics(this.water);
       },
       onPoolShapeChange: (shape) => {
-        const poolWidth = shape === 'Box' ? 1.0 : this.controls.poolWidth;
-        const poolHeight = shape === 'Box' ? 1.0 : this.controls.poolHeight;
-        const poolLength = shape === 'Box' ? 1.0 : this.controls.poolLength;
+        const poolWidth = this.controls.poolWidth;
+        const poolHeight = this.controls.poolHeight;
+        const poolLength = this.controls.poolLength;
         this.renderer.setPoolShape(
           shape,
           this.controls.cornerRadius,
@@ -124,8 +125,8 @@ export class WaterApp {
         if (this.controls.paused) this.draw();
       },
       onPoolWidthChange: (width) => {
-        const poolHeight = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolHeight;
-        const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+        const poolHeight = this.controls.poolHeight;
+        const poolLength = this.controls.poolLength;
         this.renderer.setPoolShape(
           this.controls.poolShape,
           this.controls.cornerRadius,
@@ -140,8 +141,8 @@ export class WaterApp {
         if (this.controls.paused) this.draw();
       },
       onPoolHeightChange: (height) => {
-        const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-        const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+        const poolWidth = this.controls.poolWidth;
+        const poolLength = this.controls.poolLength;
         this.renderer.setPoolShape(
           this.controls.poolShape,
           this.controls.cornerRadius,
@@ -161,8 +162,8 @@ export class WaterApp {
         if (this.controls.paused) this.draw();
       },
       onPoolLengthChange: (length) => {
-        const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-        const poolHeight = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolHeight;
+        const poolWidth = this.controls.poolWidth;
+        const poolHeight = this.controls.poolHeight;
         this.renderer.setPoolShape(
           this.controls.poolShape,
           this.controls.cornerRadius,
@@ -178,6 +179,15 @@ export class WaterApp {
       },
     });
 
+    // Synchronize shader dimensions on startup
+    this.renderer.setPoolShape(
+      this.controls.poolShape,
+      this.controls.cornerRadius,
+      this.controls.poolWidth,
+      this.controls.poolHeight,
+      this.controls.poolLength
+    );
+
     // Connect user mouse/touch controllers for orbiting, zooming, and dragging objects
     this.interaction = new InteractionController({
       canvas: this.webglRenderer.domElement,
@@ -190,6 +200,22 @@ export class WaterApp {
       draw: this.draw,
     });
     this.interaction.connect();
+
+    // Wire up quick toggle buttons
+    const gravityBtn = document.getElementById('toggle-gravity-btn');
+    if (gravityBtn) {
+      gravityBtn.addEventListener('click', () => {
+        this.controls.togglePhysics();
+      });
+    }
+    const pauseBtn = document.getElementById('toggle-pause-btn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        this.controls.togglePaused();
+      });
+    }
+    this.updateGravityUI(this.controls.physicsEnabled);
+    this.updatePauseUI(this.controls.paused);
 
     // Generate initial drops to create ambient starting waves
     this.seedWater();
@@ -226,8 +252,8 @@ export class WaterApp {
    * Spawns 20 random initial ripples in the pool to seed the simulation.
    */
   private seedWater() {
-    const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-    const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+    const poolWidth = this.controls.poolWidth;
+    const poolLength = this.controls.poolLength;
     for (let i = 0; i < 20; i++) {
       this.water.addDrop(
         Math.random() * 2 - 1,
@@ -262,9 +288,9 @@ export class WaterApp {
     if (seconds > 1) return; // Avoid physics explosion on long inactive tabs
 
     this.interaction.update(seconds);
-    const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-    const poolHeight = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolHeight;
-    const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+    const poolWidth = this.controls.poolWidth;
+    const poolHeight = this.controls.poolHeight;
+    const poolLength = this.controls.poolLength;
 
     // 1. Update obstacle physics (buoyancy, bounds-clamping) and write displacements
     this.objects.update(
@@ -300,9 +326,9 @@ export class WaterApp {
   private draw = () => {
     this.interaction.preparePausedDraw();
     this.cameraController.apply(this.camera);
-    const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-    const poolHeight = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolHeight;
-    const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+    const poolWidth = this.controls.poolWidth;
+    const poolHeight = this.controls.poolHeight;
+    const poolLength = this.controls.poolLength;
 
     // Bind object heightmap uniforms
     this.objects.prepareRender(this.water, poolWidth, poolHeight, poolLength);
@@ -341,9 +367,9 @@ export class WaterApp {
    * Switch the active simulation object.
    */
   private selectSimulationObject = (name: string) => {
-    const poolWidth = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolWidth;
-    const poolHeight = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolHeight;
-    const poolLength = this.controls.poolShape === 'Box' ? 1.0 : this.controls.poolLength;
+    const poolWidth = this.controls.poolWidth;
+    const poolHeight = this.controls.poolHeight;
+    const poolLength = this.controls.poolLength;
 
     // Switch object in registry and clamp its position
     this.objects.select(
@@ -362,4 +388,28 @@ export class WaterApp {
     this.renderer.updateCaustics(this.water);
     this.draw();
   };
+
+  /**
+   * Updates visual state of the Gravity quick pill button.
+   */
+  private updateGravityUI(enabled: boolean) {
+    const gravityBtn = document.getElementById('toggle-gravity-btn');
+    const gravityStatus = document.getElementById('gravity-status');
+    if (gravityBtn && gravityStatus) {
+      gravityBtn.classList.toggle('active', enabled);
+      gravityStatus.textContent = enabled ? 'ON' : 'OFF';
+    }
+  }
+
+  /**
+   * Updates visual state of the Sea Waves quick pill button.
+   */
+  private updatePauseUI(paused: boolean) {
+    const pauseBtn = document.getElementById('toggle-pause-btn');
+    const pauseStatus = document.getElementById('pause-status');
+    if (pauseBtn && pauseStatus) {
+      pauseBtn.classList.toggle('paused', paused);
+      pauseStatus.textContent = paused ? 'PAUSED' : 'ACTIVE';
+    }
+  }
 }

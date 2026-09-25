@@ -17,11 +17,23 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   </head>
   <body>
-    <!-- Top-Left Floating Title Badge -->
-    <div id="sea-badge">
-      <div class="sea-status-dot"></div>
-      <span class="sea-badge-title">THREEJS SEA</span>
-      <span class="sea-badge-tag">Tropical Ocean</span>
+    <!-- Top-Left Floating Title Badge & Quick Action Pills -->
+    <div id="sea-badge-bar">
+      <div id="sea-badge">
+        <div class="sea-status-dot"></div>
+        <span class="sea-badge-title">THREEJS SEA</span>
+        <span class="sea-badge-tag">Infinite Ocean</span>
+      </div>
+      <div id="quick-actions">
+        <button id="toggle-gravity-btn" class="quick-pill active" title="Toggle Gravity Physics (G)">
+          <span class="material-icons pill-icon">arrow_downward</span>
+          <span class="pill-label">Gravity: <strong id="gravity-status">ON</strong></span>
+        </button>
+        <button id="toggle-pause-btn" class="quick-pill" title="Play / Pause Waves (Spacebar)">
+          <span class="material-icons pill-icon">waves</span>
+          <span class="pill-label">Sea: <strong id="pause-status">ACTIVE</strong></span>
+        </button>
+      </div>
     </div>
 
     <!-- Help & Information Drawer -->
