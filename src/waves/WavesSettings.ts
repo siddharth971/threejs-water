@@ -23,11 +23,11 @@ export interface SpectrumSettings {
 export class WavesSettings {
 
     public g = 9.81;
-    public depth = 20.0;
+    public depth = 2.0;
     public lambda = 0.85;
 
     public local: DisplaySpectrumSettings = {
-        scale: 0.35,
+        scale: 0.55,
         windSpeed: 2.0,
         windDirection: -29.81,
         fetch: 100000,

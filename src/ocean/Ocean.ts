@@ -10,6 +10,7 @@ import { OceanGUI } from './OceanGUI';
 const showBuoy = false;
 const showFisherBoat = false;
 const showBabylonBuoy = true;
+const showPirateShip = true;
 
 export class Ocean {
     private _engine: BABYLON.Engine;
@@ -281,7 +282,7 @@ export class Ocean {
             const babylonBuoyRoot = babylonBuoyMeshes[0].parent as BABYLON.TransformNode;
             const scale = 14;
 
-            babylonBuoyRoot.position.z = -8;
+            babylonBuoyRoot.position.set(-6, 0, -8);
             babylonBuoyRoot.scaling.setAll(scale);
 
             babylonBuoyMeshes.forEach((mesh) => {
@@ -310,6 +311,37 @@ export class Ocean {
             this._shadowGeneratorBuoy.usePoissonSampling = true;
             this._shadowGeneratorBuoy.addShadowCaster(babylonBuoyMeshes[0]);
             this._shadowGeneratorBuoy.bias = 0.01;
+        }
+
+        if (showPirateShip) {
+            const shipResult = await BABYLON.SceneLoader.ImportMeshAsync("", "models/", "pirate_ship.glb", this._scene);
+            const shipRoot = shipResult.meshes[0];
+
+            shipRoot.name = "pirateShipRoot";
+            const scale = 1.0;
+            shipRoot.scaling.setAll(scale);
+            shipRoot.position.set(3, 0, -13);
+            shipRoot.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(0, Math.PI / 4, 0);
+
+            shipResult.meshes.forEach((mesh) => {
+                if (mesh.material) {
+                    mesh.material.backFaceCulling = false;
+                }
+                this._shadowGenerator.addShadowCaster(mesh);
+                mesh.receiveShadows = true;
+                this._depthRenderer.getDepthMap().renderList!.push(mesh);
+            });
+
+            this._buoyancy.addMesh(
+                shipRoot,
+                {
+                    v1: new BABYLON.Vector3(0, 0, 0),
+                    v2: new BABYLON.Vector3(0, 0, 4 / scale),
+                    v3: new BABYLON.Vector3(1.5 / scale, 0, 0),
+                },
+                -0.35,
+                2
+            );
         }
     }
 
