@@ -22,27 +22,27 @@ export interface SpectrumSettings {
 
 export class WavesSettings {
 
-    public g = 7.92;
-    public depth = 0.454;
-    public lambda = 0.659;
+    public g = 9.81;
+    public depth = 20.0;
+    public lambda = 0.85;
 
     public local: DisplaySpectrumSettings = {
-        scale: 1,
-        windSpeed: 4.593,
-        windDirection: -3.6,
+        scale: 0.35,
+        windSpeed: 2.0,
+        windDirection: -29.81,
         fetch: 100000,
         spreadBlend: 1,
-        swell: 0.85,
-        peakEnhancement: 100,
+        swell: 0.3,
+        peakEnhancement: 3.3,
         shortWavesFade: 0.01,
     };
     public swell: DisplaySpectrumSettings = {
-        scale: 0.5,
+        scale: 0.25,
         windSpeed: 1.5,
         windDirection: 90,
         fetch: 300000,
         spreadBlend: 1,
-        swell: 1,
+        swell: 0.8,
         peakEnhancement: 3.3,
         shortWavesFade: 0.01,
     };

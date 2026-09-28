@@ -84,11 +84,11 @@ export class OceanMaterial {
             mat.AddUniform("_LOD_scale", "float", 7.13);
 
             mat.AddUniform("_FoamColor", "vec3", new BABYLON.Vector3(1, 1, 1));
-            mat.AddUniform("_FoamScale", "float", 2.4);
-            mat.AddUniform("_ContactFoam", "float", 1);
-            mat.AddUniform("_FoamBiasLOD0", "float", 0.84);
-            mat.AddUniform("_FoamBiasLOD1", "float", 1.83);
-            mat.AddUniform("_FoamBiasLOD2", "float", 2.72);
+            mat.AddUniform("_FoamScale", "float", 1.2);
+            mat.AddUniform("_ContactFoam", "float", 0.6);
+            mat.AddUniform("_FoamBiasLOD0", "float", 0.60);
+            mat.AddUniform("_FoamBiasLOD1", "float", 1.25);
+            mat.AddUniform("_FoamBiasLOD2", "float", 1.95);
 
             mat.AddUniform("_SSSColor", "vec3", new BABYLON.Vector3(0.1541919, 0.8857628, 0.990566));
             mat.AddUniform("_SSSStrength", "float", 0.15);

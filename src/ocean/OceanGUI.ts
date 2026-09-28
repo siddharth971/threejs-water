@@ -152,6 +152,18 @@ export class OceanGUI {
                 if (!data.oceangeom_skirtSize || data.oceangeom_skirtSize < 30) {
                     data.oceangeom_skirtSize = 40;
                 }
+                if (data.waves_local_peakEnhancement > 10 || data.waves_local_windSpeed > 3.0 || data.waves_local_scale > 0.6) {
+                    data.waves_local_scale = 0.35;
+                    data.waves_local_windSpeed = 2.0;
+                    data.waves_local_peakEnhancement = 3.3;
+                    data.waves_local_swell = 0.3;
+                    data.waves_depth = 20.0;
+                    data.waves_g = 9.81;
+                    data.waves_lambda = 0.85;
+                }
+                if (data.oceanshader__FoamScale > 1.8) {
+                    data.oceanshader__FoamScale = 1.2;
+                }
                 for (const key in data) {
                     try {
                         this._paramChanged(key, data[key]);
