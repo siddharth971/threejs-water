@@ -20,7 +20,7 @@ export class ShipDeckPlayer {
 
     // Movement state (Ship local coordinates)
     private _localPos: BABYLON.Vector3;
-    private _yaw = Math.PI; // Face forward towards bow (-Z) initially
+    private _yaw = 0; // Face forward towards bow (-Z) initially
     private _pitch = 0;
     private _eyeHeight = 1.62;
     private _walkSpeed = 3.4;
@@ -204,8 +204,8 @@ export class ShipDeckPlayer {
             if (!this._isPointerLocked || !this._isFirstPerson) return;
 
             const sensitivity = 0.0022;
-            this._yaw += e.movementX * sensitivity;
-            this._pitch += e.movementY * sensitivity;
+            this._yaw -= e.movementX * sensitivity;
+            this._pitch -= e.movementY * sensitivity;
 
             // Clamp pitch to avoid neck snapping (-85 deg to +85 deg)
             const maxPitch = Math.PI * 0.46;
@@ -310,8 +310,8 @@ export class ShipDeckPlayer {
             const isMoving = moveForward !== 0 || moveRight !== 0;
 
             if (isMoving) {
-                // Vector in player's local yaw direction
-                const forward = new BABYLON.Vector3(Math.sin(this._yaw), 0, Math.cos(this._yaw));
+                // Vector in player's local yaw direction (Right-Handed System: Look is -Z, Right is +X)
+                const forward = new BABYLON.Vector3(-Math.sin(this._yaw), 0, -Math.cos(this._yaw));
                 const right = new BABYLON.Vector3(Math.cos(this._yaw), 0, -Math.sin(this._yaw));
 
                 const moveDir = forward.scale(moveForward).add(right.scale(moveRight)).normalize();
@@ -370,7 +370,7 @@ export class ShipDeckPlayer {
         this._pitchNode.rotation.set(this._pitch, 0, 0);
 
         // Calculate facing direction for interaction dot product
-        const forwardLocal = new BABYLON.Vector3(Math.sin(this._yaw), 0, Math.cos(this._yaw));
+        const forwardLocal = new BABYLON.Vector3(-Math.sin(this._yaw), 0, -Math.cos(this._yaw));
 
         // Update Proximity to Interactive Objects
         const nearest = this.interactiveObjects.updateProximity(this._localPos, forwardLocal);
