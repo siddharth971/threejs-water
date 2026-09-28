@@ -10,9 +10,6 @@ export interface MeshBuoyancy {
     yOffset: number;
     spaceCoordinates: number;
     initQuaternion: BABYLON.Quaternion;
-    curQuaternion:  BABYLON.Quaternion;
-    stepQuaternion:  BABYLON.Quaternion;
-    curStep: number;
 }
 
 export class Buoyancy {
@@ -41,7 +38,7 @@ export class Buoyancy {
     }
 
     public addMesh(mesh: BABYLON.TransformNode, frame: BuoyancyFrame, yOffset = 0, spaceCoordinates = 0): void {
-        this._meshes.push({ mesh, frame, yOffset, spaceCoordinates, initQuaternion: mesh.rotationQuaternion!.clone(), curStep: 0, curQuaternion: new BABYLON.Quaternion(), stepQuaternion: new BABYLON.Quaternion() });
+        this._meshes.push({ mesh, frame, yOffset, spaceCoordinates, initQuaternion: mesh.rotationQuaternion!.clone() });
     }
 
     public set size(size: number) {
@@ -92,13 +89,8 @@ export class Buoyancy {
         const tmp = BABYLON.TmpVectors.Vector3[5];
         const tmp2 = BABYLON.TmpVectors.Vector3[6];
         const tmp3 = BABYLON.TmpVectors.Vector3[7];
-        const forward = BABYLON.TmpVectors.Vector3[8];
-        const right = BABYLON.TmpVectors.Vector3[9];
-        const normal = BABYLON.TmpVectors.Vector3[10];
-        const forwardU = BABYLON.TmpVectors.Vector3[11];
-        const rightU = BABYLON.TmpVectors.Vector3[12];
 
-        const { mesh, frame, yOffset, spaceCoordinates, initQuaternion, curQuaternion, stepQuaternion, curStep } = meshBuoyancy;
+        const { mesh, frame, yOffset, spaceCoordinates, initQuaternion } = meshBuoyancy;
 
         BABYLON.Vector3.TransformCoordinatesToRef(frame.v1, mesh.getWorldMatrix(), tmp);
 
@@ -107,60 +99,24 @@ export class Buoyancy {
         mesh.position.y = y + yOffset;
 
         if (frame.v2 && frame.v3) {
-            if (curStep < this._numSteps) {
-                meshBuoyancy.curStep++;
-                curQuaternion.multiplyToRef(stepQuaternion, curQuaternion);
-                initQuaternion.multiplyToRef(curQuaternion, mesh.rotationQuaternion!);
-                return;
-            }
-
             BABYLON.Vector3.TransformCoordinatesToRef(frame.v2, mesh.getWorldMatrix(), tmp2);
-            tmp2.subtractToRef(tmp, forwardU);
-            forwardU.normalize();
-
             BABYLON.Vector3.TransformCoordinatesToRef(frame.v3, mesh.getWorldMatrix(), tmp3);
-            tmp3.subtractToRef(tmp, rightU);
-            rightU.normalize();
 
-            tmp.y = y;
+            const yForward = this.getWaterHeight(tmp2);
+            const yRight = this.getWaterHeight(tmp3);
 
-            forward.copyFrom(tmp2);
-            forward.y = this.getWaterHeight(tmp2);
-            forward.subtractToRef(tmp, forward);
-            forward.normalize();
+            const distForward = Math.max(0.5, BABYLON.Vector3.Distance(new BABYLON.Vector3(tmp.x, 0, tmp.z), new BABYLON.Vector3(tmp2.x, 0, tmp2.z)));
+            const distRight = Math.max(0.5, BABYLON.Vector3.Distance(new BABYLON.Vector3(tmp.x, 0, tmp.z), new BABYLON.Vector3(tmp3.x, 0, tmp3.z)));
 
-            right.copyFrom(tmp3);
-            right.y = this.getWaterHeight(tmp3);
-            right.subtractToRef(tmp, right);
-            right.normalize();
+            const pitch = Math.atan2(yForward - y, distForward) * this._attenuation;
+            const roll = Math.atan2(yRight - y, distRight) * this._attenuation;
 
-            BABYLON.Vector3.CrossToRef(right, forward, normal);
-            BABYLON.Vector3.CrossToRef(forward, normal, right);
+            const waveTilt = spaceCoordinates === 0 
+                ? BABYLON.Quaternion.FromEulerAngles(-pitch, roll, 0)
+                : BABYLON.Quaternion.FromEulerAngles(-pitch, 0, roll);
 
-            right.normalize();
-
-            let xa = Math.acos(BABYLON.Scalar.Clamp(BABYLON.Vector3.Dot(forwardU, forward), 0, 1)) * this._attenuation;
-            let za = Math.acos(BABYLON.Scalar.Clamp(BABYLON.Vector3.Dot(rightU, right), 0, 1)) * this._attenuation;
-
-            switch (spaceCoordinates) {
-                case 0:
-                    if (forward.y > forwardU.y) xa = -xa;
-                    if (right.y > rightU.y) za = -za;
-                    BABYLON.Quaternion.FromEulerAnglesToRef(xa / this._numSteps, za / this._numSteps, 0, meshBuoyancy.stepQuaternion);
-                    break;
-                case 1:
-                    if (forward.y > forwardU.y) xa = -xa;
-                    if (right.y < rightU.y) za = -za;
-                    BABYLON.Quaternion.FromEulerAnglesToRef(xa / this._numSteps, 0, za / this._numSteps, meshBuoyancy.stepQuaternion);
-                    break;
-                case 2:
-                    if (forward.y > forwardU.y) xa = -xa;
-                    if (right.y > rightU.y) za = -za;
-                    BABYLON.Quaternion.FromEulerAnglesToRef(xa / this._numSteps, 0, za / this._numSteps, meshBuoyancy.stepQuaternion);
-                    break;
-            }
-
-            meshBuoyancy.curStep = 0;
+            const targetRot = initQuaternion.multiply(waveTilt);
+            BABYLON.Quaternion.SlerpToRef(mesh.rotationQuaternion!, targetRot, 0.08, mesh.rotationQuaternion!);
         }
     }
 

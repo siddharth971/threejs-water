@@ -320,13 +320,99 @@ export class Ocean {
             shipRoot.name = "pirateShipRoot";
             const scale = 1.0;
             shipRoot.scaling.setAll(scale);
-            shipRoot.position.set(3, 0, -13);
+            shipRoot.position.set(2.5, 0, -14);
             shipRoot.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(0, Math.PI / 4, 0);
 
+            // Realistic ship textures from Downloads
+            const woodPlanksTex = new BABYLON.Texture("textures/ship/wooden_planks.jpg", this._scene);
+            woodPlanksTex.uScale = 4;
+            woodPlanksTex.vScale = 4;
+
+            const woodGrainTex = new BABYLON.Texture("textures/ship/wood_texture.jpg", this._scene);
+            woodGrainTex.uScale = 2;
+            woodGrainTex.vScale = 4;
+
+            const darkWoodTex = new BABYLON.Texture("textures/ship/1-free-wood-plank-texture.jpg", this._scene);
+
+            // Configure each material with authentic pirate ship PBR colors and textures
             shipResult.meshes.forEach((mesh) => {
-                if (mesh.material) {
-                    mesh.material.backFaceCulling = false;
+                const mat = mesh.material as BABYLON.PBRMaterial;
+                if (mat) {
+                    mat.backFaceCulling = false;
+                    mat.twoSidedLighting = true;
+                    mat.environmentIntensity = 1.2;
+
+                    const matName = mat.name.toLowerCase();
+                    const meshName = mesh.name.toLowerCase();
+
+                    if (matName.includes("boat planks") || meshName.includes("body")) {
+                        // Weathered oak hull
+                        mat.albedoColor = new BABYLON.Color3(0.50, 0.32, 0.18);
+                        mat.albedoTexture = woodPlanksTex;
+                        mat.roughness = 0.75;
+                        mat.metallic = 0.02;
+                    } else if (matName.includes("mast") || meshName.includes("mast")) {
+                        // Cedar/pine mast wood
+                        mat.albedoColor = new BABYLON.Color3(0.58, 0.38, 0.22);
+                        mat.albedoTexture = woodGrainTex;
+                        mat.roughness = 0.70;
+                        mat.metallic = 0.0;
+                    } else if (matName.includes("sail") || meshName.includes("sail")) {
+                        // Vintage cream canvas sails
+                        mat.albedoColor = new BABYLON.Color3(0.92, 0.88, 0.80);
+                        mat.roughness = 0.60;
+                        mat.metallic = 0.0;
+                    } else if (matName.includes("rope") || meshName.includes("rope") || meshName.includes("tie")) {
+                        // Natural hemp rope
+                        mat.albedoColor = new BABYLON.Color3(0.70, 0.60, 0.45);
+                        mat.roughness = 0.90;
+                        mat.metallic = 0.0;
+                    } else if (matName.includes("cannon") || meshName.includes("cannon")) {
+                        // Cast iron cannons
+                        mat.albedoColor = new BABYLON.Color3(0.12, 0.12, 0.15);
+                        mat.roughness = 0.35;
+                        mat.metallic = 0.88;
+                    } else if (matName.includes("metal") || meshName.includes("metal")) {
+                        // Wrought iron fittings
+                        mat.albedoColor = new BABYLON.Color3(0.18, 0.18, 0.20);
+                        mat.roughness = 0.40;
+                        mat.metallic = 0.85;
+                    } else if (matName.includes("railing") || matName.includes("wheel") || meshName.includes("railing") || meshName.includes("wheel")) {
+                        // Polished mahogany railings
+                        mat.albedoColor = new BABYLON.Color3(0.42, 0.24, 0.14);
+                        mat.albedoTexture = woodGrainTex;
+                        mat.roughness = 0.55;
+                        mat.metallic = 0.04;
+                    } else if (matName.includes("trim") || meshName.includes("trim")) {
+                        // Dark walnut trim accent
+                        mat.albedoColor = new BABYLON.Color3(0.32, 0.18, 0.10);
+                        mat.albedoTexture = darkWoodTex;
+                        mat.roughness = 0.65;
+                        mat.metallic = 0.05;
+                    } else if (matName.includes("stair") || meshName.includes("stair")) {
+                        mat.albedoColor = new BABYLON.Color3(0.45, 0.28, 0.16);
+                        mat.albedoTexture = woodGrainTex;
+                        mat.roughness = 0.75;
+                    } else if (matName.includes("crows nest") || meshName.includes("crows nest")) {
+                        mat.albedoColor = new BABYLON.Color3(0.38, 0.24, 0.14);
+                        mat.albedoTexture = woodGrainTex;
+                        mat.roughness = 0.78;
+                    } else if (matName.includes("window") || meshName.includes("window")) {
+                        mat.albedoColor = new BABYLON.Color3(0.08, 0.12, 0.18);
+                        mat.roughness = 0.10;
+                        mat.metallic = 0.60;
+                    } else if (meshName.includes("flag") || matName.includes("material")) {
+                        // Pirate black flag
+                        mat.albedoColor = new BABYLON.Color3(0.10, 0.10, 0.12);
+                        mat.roughness = 0.70;
+                    } else {
+                        // General ship wood fallback
+                        mat.albedoColor = new BABYLON.Color3(0.48, 0.30, 0.18);
+                        mat.albedoTexture = woodGrainTex;
+                        mat.roughness = 0.75;
+                    }
                 }
+
                 this._shadowGenerator.addShadowCaster(mesh);
                 mesh.receiveShadows = true;
                 this._depthRenderer.getDepthMap().renderList!.push(mesh);
@@ -336,10 +422,10 @@ export class Ocean {
                 shipRoot,
                 {
                     v1: new BABYLON.Vector3(0, 0, 0),
-                    v2: new BABYLON.Vector3(0, 0, 4 / scale),
-                    v3: new BABYLON.Vector3(1.5 / scale, 0, 0),
+                    v2: new BABYLON.Vector3(0, 0, 5 / scale),
+                    v3: new BABYLON.Vector3(2.5 / scale, 0, 0),
                 },
-                -0.35,
+                -0.45,
                 2
             );
         }
