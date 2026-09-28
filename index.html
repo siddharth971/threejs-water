@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>ThreeJS Sea — Tropical Ocean Simulation</title>
+    <title>Babylon.js WebGPU FFT Ocean & Particle Simulation</title>
     <meta
       name="description"
-      content="Real-time 3D Tropical Sea Simulation built with Three.js and WebGL. Features physical wave propagation, raytraced refractions, sandy seabed, caustics, and interactive floating objects."
+      content="High-fidelity ocean simulation powered by Babylon.js and WebGPU compute shaders with JONSWAP spectrum FFT wave synthesis and particle system."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,96 +14,30 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+
+    <!-- Babylon.js Global CDN scripts for WebGPU, Materials, GUI, and Loaders -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
   </head>
   <body>
-    <!-- Top-Left Floating Title Badge & Quick Action Pills -->
-    <div id="sea-badge-bar">
-      <div id="sea-badge">
-        <div class="sea-status-dot"></div>
-        <span class="sea-badge-title">THREEJS SEA</span>
-        <span class="sea-badge-tag">Infinite Ocean</span>
+    <!-- Top-Left Floating Title Badge -->
+    <div id="badge-bar">
+      <div id="app-badge">
+        <div class="status-dot"></div>
+        <span class="badge-title">BABYLON.JS OCEAN</span>
+        <span class="badge-tag">WebGPU FFT Waves + Particles</span>
       </div>
-      <div id="quick-actions">
-        <button id="toggle-gravity-btn" class="quick-pill active" title="Toggle Gravity Physics (G)">
-          <span class="material-icons pill-icon">arrow_downward</span>
-          <span class="pill-label">Gravity: <strong id="gravity-status">ON</strong></span>
-        </button>
-        <button id="toggle-pause-btn" class="quick-pill" title="Play / Pause Waves (Spacebar)">
-          <span class="material-icons pill-icon">waves</span>
-          <span class="pill-label">Sea: <strong id="pause-status">ACTIVE</strong></span>
-        </button>
+      <div id="controls-hint">
+        <span>Press <strong>F8</strong> to toggle GUI · <strong>WASD / Arrow Keys</strong> to move camera · <strong>Shift</strong> to accelerate</span>
       </div>
     </div>
 
-    <!-- Help & Information Drawer -->
-    <div id="help" class="collapsed">
-      <div class="help-header">
-        <h1>ThreeJS Sea</h1>
-        <div class="help-subtitle">Open Tropical Ocean Simulation</div>
-      </div>
+    <!-- Main Babylon.js WebGPU Render Canvas -->
+    <canvas id="renderCanvas"></canvas>
 
-      <div class="help-section">
-        <h2>Interactive Controls</h2>
-        <ul class="control-list">
-          <li>
-            <span class="key-badge">Click + Drag</span>
-            <span>Make ripples on the sea</span>
-          </li>
-          <li>
-            <span class="key-badge">Drag Orbit</span>
-            <span>Rotate camera 360° around the ocean</span>
-          </li>
-          <li>
-            <span class="key-badge">Drag Object</span>
-            <span>Move duck, sphere, or obstacles</span>
-          </li>
-          <li>
-            <span class="key-badge">Spacebar</span>
-            <span>Pause & resume wave simulation</span>
-          </li>
-          <li>
-            <span class="key-badge">G</span>
-            <span>Toggle gravity and buoyancy physics</span>
-          </li>
-          <li>
-            <span class="key-badge">L</span>
-            <span>Align sunlight with camera view</span>
-          </li>
-          <li>
-            <span class="key-badge">Scroll</span>
-            <span>Zoom camera in & out</span>
-          </li>
-        </ul>
-      </div>
-
-      <div class="help-section">
-        <h2>Features & Optics</h2>
-        <ul class="feature-list">
-          <li>Raytraced Fresnel reflections & refractions</li>
-          <li>Tropical seabed with dynamic dancing caustics</li>
-          <li>Beer-Lambert water absorption & deep ocean gradient</li>
-          <li>2D wave equation simulation & procedural ocean swells</li>
-          <li>Sun glint specular highlights on wave crests</li>
-          <li>Submerged obstacle buoyancy & fluid displacement</li>
-        </ul>
-      </div>
-
-      <div class="help-footer">
-        <p>
-          Original WebGL Water demo by
-          <a href="http://madebyevan.com/" target="_blank" rel="noopener noreferrer">Evan Wallace</a>
-        </p>
-        <p>
-          Three.js port by
-          <a href="https://github.com/jeantimex" target="_blank" rel="noopener noreferrer">jeantimex</a>
-        </p>
-      </div>
-    </div>
-
-    <div id="help-toggle" class="material-icons" title="Toggle Info Panel">menu</div>
-    <div id="app"></div>
-    <div id="loading">Loading Tropical Sea...</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
