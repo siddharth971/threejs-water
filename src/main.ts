@@ -7,17 +7,36 @@ import { Ocean } from './ocean/Ocean';
  */
 
 async function createEngine(): Promise<BABYLON.Engine> {
-    const webGPUSupported = await (BABYLON.WebGPUEngine as any).IsSupportedAsync;
-    if (webGPUSupported) {
-        const engine = new BABYLON.WebGPUEngine(document.getElementById("renderCanvas") as HTMLCanvasElement);
-        await engine.initAsync();
-        return engine as any;
+    if (typeof BABYLON !== "undefined" && BABYLON.SceneLoader) {
+        BABYLON.SceneLoader.ShowLoadingScreen = false;
     }
-    return new BABYLON.Engine(document.getElementById("renderCanvas") as HTMLCanvasElement, true);
+    const webGPUSupported = await (BABYLON.WebGPUEngine as any).IsSupportedAsync;
+    let engine: BABYLON.Engine;
+    if (webGPUSupported) {
+        const webGPUEngine = new BABYLON.WebGPUEngine(document.getElementById("renderCanvas") as HTMLCanvasElement);
+        await webGPUEngine.initAsync();
+        engine = webGPUEngine as any;
+    } else {
+        engine = new BABYLON.Engine(document.getElementById("renderCanvas") as HTMLCanvasElement, true);
+    }
+
+    // Disable Babylon default loading screen entirely
+    engine.loadingScreen = {
+        displayLoadingUI: () => {},
+        hideLoadingUI: () => {},
+        loadingUIBackgroundColor: "",
+        loadingUIText: ""
+    } as any;
+    engine.hideLoadingUI();
+
+    return engine;
 }
 
 export class Playground {
     public static CreateScene(engine: BABYLON.Engine, canvas: HTMLCanvasElement): Promise<BABYLON.Scene> {
+        if (typeof BABYLON !== "undefined" && BABYLON.SceneLoader) {
+            BABYLON.SceneLoader.ShowLoadingScreen = false;
+        }
         const oceanDemo = new Ocean();
         return oceanDemo.createScene(engine, canvas);
     }

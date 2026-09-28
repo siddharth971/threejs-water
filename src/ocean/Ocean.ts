@@ -24,7 +24,7 @@ export class Ocean {
     private _wavesSettings: WavesSettings;
     private _fxaa: BABYLON.Nullable<BABYLON.FxaaPostProcess>;
     private _size: number;
-    private _gui: OceanGUI;
+    private _gui: OceanGUI | null;
     private _skybox: SkyBox;
     private _oceanMaterial: OceanMaterial;
     private _oceanGeometry: OceanGeometry;
@@ -79,6 +79,10 @@ export class Ocean {
         engine: BABYLON.Engine,
         canvas: HTMLCanvasElement
     ): Promise<BABYLON.Scene> {
+        if (typeof BABYLON !== "undefined" && BABYLON.SceneLoader) {
+            BABYLON.SceneLoader.ShowLoadingScreen = false;
+        }
+        engine.hideLoadingUI();
         (window as any).convf = function(l: number): number {
             const a = new Uint8Array([l & 0xff, (l & 0xff00) >> 8, (l & 0xff0000) >> 16, (l & 0xff000000) >> 24]);
             return new Float32Array(a.buffer)[0];
@@ -115,8 +119,6 @@ export class Ocean {
         }
 
         this._setCameraKeys();
-
-        await OceanGUI.LoadDAT();
 
         this._rttDebug = new RTTDebug(scene, engine, 32);
         this._rttDebug.show(false);
@@ -163,11 +165,8 @@ export class Ocean {
         await this._updateSize(256);
         this._oceanGeometry.initializeMeshes();
 
-        this._gui = new OceanGUI(this._useProceduralSky, scene, engine, this._parameterRead.bind(this), this._parameterChanged.bind(this));
-
-        if (location.href.indexOf("hidegui") !== -1) {
-            this._gui.visible = false;
-        }
+        this._gui = null;
+        this._loadSavedOceanSettings();
 
         this._scene.onKeyboardObservable.add((kbInfo: any) => {
             switch (kbInfo.type) {
@@ -498,7 +497,7 @@ export class Ocean {
         obj[parts[parts.length - 1]] = value;
     }
 
-    private _parameterRead(name: string): any {
+    public _parameterRead(name: string): any {
         switch (name) {
             case "size":
                 return this._size;
@@ -609,11 +608,12 @@ export class Ocean {
             case "proceduralSky":
                 value = !!value;
                 if (this._useProceduralSky !== value) {
-                    this._gui.dispose();
+                    if (this._gui) {
+                        this._gui.dispose();
+                    }
                     this._skybox.dispose();
                     this._useProceduralSky = value;
                     this._skybox = new SkyBox(this._useProceduralSky, this._scene);
-                    this._gui = new OceanGUI(this._useProceduralSky, this._scene, this._engine, this._parameterRead.bind(this), this._parameterChanged.bind(this));
                 }
                 break;
             case "useZQSD":
@@ -687,6 +687,24 @@ export class Ocean {
             this._oceanMaterial.updateMaterialParameter(this._oceanGeometry.getMaterial(0) as BABYLON.PBRCustomMaterial, name, value);
             this._oceanMaterial.updateMaterialParameter(this._oceanGeometry.getMaterial(1) as BABYLON.PBRCustomMaterial, name, value);
             this._oceanMaterial.updateMaterialParameter(this._oceanGeometry.getMaterial(2) as BABYLON.PBRCustomMaterial, name, value);
+        }
+    }
+
+    private _loadSavedOceanSettings(): void {
+        try {
+            const saved = localStorage.getItem("ocean_custom_defaults");
+            if (saved) {
+                const data = JSON.parse(saved);
+                for (const key in data) {
+                    try {
+                        this._parameterChanged(key, data[key]);
+                    } catch {
+                        // ignore unknown key
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn("Could not parse saved ocean settings:", err);
         }
     }
 }

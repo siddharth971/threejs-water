@@ -90,7 +90,6 @@ export class ShipDeckPlayer {
     private _crosshair: HTMLElement | null = null;
     private _toastContainer: HTMLElement | null = null;
     private _spyglassOverlay: HTMLElement | null = null;
-    private _embarkOverlay: HTMLElement | null = null;
 
     // Dedicated State HUDs
     private _helmHUD: HTMLElement | null = null;
@@ -247,10 +246,6 @@ export class ShipDeckPlayer {
 
         document.addEventListener("pointerlockchange", () => {
             this._isPointerLocked = document.pointerLockElement === this._canvas;
-            if (this._embarkOverlay) {
-                this._embarkOverlay.style.opacity = this._isPointerLocked ? "0" : "1";
-                this._embarkOverlay.style.pointerEvents = this._isPointerLocked ? "none" : "auto";
-            }
         });
 
         window.addEventListener("mousemove", (e) => {
@@ -1058,32 +1053,6 @@ export class ShipDeckPlayer {
         toastBox.id = "ship-toast-box";
         document.body.appendChild(toastBox);
         this._toastContainer = toastBox;
-
-        // 5. Initial Click to Embark Banner
-        const embark = document.createElement("div");
-        embark.id = "embark-overlay";
-        embark.innerHTML = `
-            <div class="embark-card">
-                <div class="embark-badge">⚓ PIRATE SHIP SIMULATOR</div>
-                <h2 class="embark-title">EMBARK ON THE SHIP</h2>
-                <p class="embark-desc">Step aboard the pirate vessel deck. Approach interactive ship objects, press <strong>[F]</strong> to enter dedicated gameplay stations: steer at the Helm, aim & fire Broadside Cannons, trim canvas Sails, and repair damaged hull timbers.</p>
-                <div class="embark-keys">
-                    <span class="key-pill"><strong>WASD</strong> Walk Deck</span>
-                    <span class="key-pill"><strong>Mouse</strong> Look Around</span>
-                    <span class="key-pill"><strong>F</strong> Interact Station</span>
-                    <span class="key-pill"><strong>Space</strong> Jump / Fire</span>
-                    <span class="key-pill"><strong>C</strong> Camera Mode</span>
-                </div>
-                <button class="embark-btn">TAKE COMMAND OF DECK</button>
-            </div>
-        `;
-        document.body.appendChild(embark);
-        this._embarkOverlay = embark;
-
-        embark.querySelector(".embark-btn")?.addEventListener("click", () => {
-            this.audio.init();
-            this._canvas.requestPointerLock();
-        });
 
         // 6. Bottom Navigation Controls Bar
         const deckBar = document.createElement("div");
