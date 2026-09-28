@@ -66,8 +66,8 @@ export class InteractiveShipObjects {
             actionPrompt: 'Control Ship',
             keyPrompt: 'Press F',
             subtitle: 'Take wheel, steer rudder & navigate the ocean',
-            localPos: new BABYLON.Vector3(0.50, 2.45, 5.30),
-            interactionRadius: 2.1,
+            localPos: new BABYLON.Vector3(0, 2.45, 5.85),
+            interactionRadius: 2.2,
             stateTarget: 'helm',
             interact: (_audio, _props, player) => {
                 player.enterHelmState();
