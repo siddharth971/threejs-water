@@ -140,9 +140,9 @@ export class ShipProps {
             this.starboardCannonMesh = cannons;
         }
 
-        // Apply tall sail height and high sail elevation so sea view is completely open
+        // Apply authentic sail height and realistic sail elevation so sea view is open while sails remain anchored to mast
         this.setSailHeight(1.30);
-        this.setSailElevation(2.40);
+        this.setSailElevation(0.60);
     }
 
     /**
@@ -733,11 +733,12 @@ export class ShipProps {
     /**
      * Dynamically adjusts vertical sail elevation up the mast
      */
-    public setSailElevation(offset: number): void {
+    public setSailElevation(offsetInMeters: number): void {
         if (!this.sailsMesh || !this.baseSailPosition) return;
-        this.sailsMesh.position.y = this.baseSailPosition.y + offset;
+        const emptyScale = this.sailsMesh.parent && (this.sailsMesh.parent as any).scaling ? (this.sailsMesh.parent as any).scaling.x : 3.72825;
+        this.sailsMesh.position.y = this.baseSailPosition.y + (offsetInMeters / emptyScale);
         if (this.tiesMesh && this.baseTiesPosition) {
-            this.tiesMesh.position.y = this.baseTiesPosition.y + offset;
+            this.tiesMesh.position.y = this.baseTiesPosition.y + (offsetInMeters / emptyScale);
         }
     }
 

@@ -407,12 +407,12 @@ export class ShipDeckPlayer {
         this.gameplayState = PlayerGameplayState.SailAdjust;
         this._savedWalkPos.copyFrom(this._localPos);
 
-        // Stand at the foot of the mast looking up at the canvas
-        this._localPos.set(0, 1.55 + this._eyeHeight, 2.0);
-        this._targetYaw = 0;
-        this._currentYaw = 0;
-        this._targetPitch = 0.52; // Look up ~30 deg
-        this._currentPitch = 0.52;
+        // Stand on the starboard deck beside the halyard rigging, looking up and across at the grand billowing canvas sails
+        this._localPos.set(0.85, 1.55 + this._eyeHeight, 0.20);
+        this._targetYaw = 2.75; // Turn around toward the main mast & sails (~158 deg)
+        this._currentYaw = 2.75;
+        this._targetPitch = 0.48; // Look up ~28 deg directly at the full canvas
+        this._currentPitch = 0.48;
         this._currentVelocity.set(0, 0, 0);
 
         this.interactiveObjects.clearHighlight();
@@ -427,7 +427,7 @@ export class ShipDeckPlayer {
 
     public exitSailState(): void {
         this.gameplayState = PlayerGameplayState.Walking;
-        this._localPos.set(0, 1.55 + this._eyeHeight, 1.8);
+        this._localPos.set(0.70, 1.55 + this._eyeHeight, 0.20);
         this._targetPitch = 0;
 
         if (this._crosshair) this._crosshair.style.display = "block";
@@ -833,6 +833,22 @@ export class ShipDeckPlayer {
 
     private _updateSailAdjustState(dt: number): void {
         this._updatePromptCardUI(null);
+
+        // Free mouse look while adjusting rigging (freely inspect sails, mast, rigging, ocean)
+        const sensitivity = 0.0020;
+        this._targetYaw -= this._mouseDeltaX * sensitivity;
+        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+
+        // Generous vertical pitch range: from -25 deg (deck) to +72 deg (high masthead & crows nest)
+        const minPitch = (-25.0 * Math.PI) / 180;
+        const maxPitch = (72.0 * Math.PI) / 180;
+        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, minPitch, maxPitch);
+
+        const mouseLerp = 1.0 - Math.exp(-24.0 * dt);
+        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
+        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
 
         // W hoists / trims canvas, S reefs / furls canvas
         if (this._keys["w"] || this._keys["arrowup"]) {

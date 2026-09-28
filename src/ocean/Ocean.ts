@@ -39,8 +39,8 @@ export class Ocean {
     private _forceUpdateGlowIntensity: boolean;
     private _canvas: HTMLCanvasElement = null as any;
     private _player: ShipDeckPlayer | null = null;
-    private _sailHeight = 1.30;
-    private _sailElevation = 2.40;
+    private _sailHeight = 1;
+    private _sailElevation = 2;
     private _windWaveSpeed = 2.6;
     private _windWaveIntensity = 0.12;
 

@@ -111,8 +111,8 @@ export class InteractiveShipObjects {
             actionPrompt: 'Adjust Sail',
             keyPrompt: 'Press F',
             subtitle: 'Trim rigging, hoist canvas & catch the wind',
-            localPos: new BABYLON.Vector3(0, 1.55, 0.9),
-            interactionRadius: 2.3,
+            localPos: new BABYLON.Vector3(0.70, 1.55, 0.35),
+            interactionRadius: 2.2,
             stateTarget: 'sail',
             interact: (_audio, _props, player) => {
                 player.enterSailState();
