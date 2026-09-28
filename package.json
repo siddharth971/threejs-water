@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "format": "prettier --write \"src/**/*.{ts,css}\"",
@@ -12,6 +12,7 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "esbuild": "^0.28.1",
     "gh-pages": "^6.3.0",
     "prettier": "^3.8.4",

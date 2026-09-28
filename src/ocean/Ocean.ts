@@ -238,18 +238,24 @@ export class Ocean {
             return true;
         }
 
-        const panel = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-        const textNOk = "**Use WebGPU to watch this demo which requires compute shaders support. To enable WebGPU please use Chrome or Edge with WebGPU enabled. Also select the WebGPU engine from the top right drop down menu.**";
+        const isLocalNetworkInsecure = location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+        const httpsUrl = `https://${location.hostname}:${location.port || '5175'}${location.pathname}`;
 
+        const panel = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
         const info = new BABYLON.GUI.TextBlock();
-        info.text = textNOk;
-        info.width = "100%";
-        info.paddingLeft = "5px";
-        info.paddingRight = "5px";
+        if (isLocalNetworkInsecure) {
+            info.text = `🔒 WebGPU requires HTTPS on local network!\n\nPlease open via HTTPS:\n${httpsUrl}\n\n(Click "Advanced" → "Proceed to site" to allow the local connection)`;
+            info.color = "#38bdf8";
+        } else {
+            info.text = "**Use WebGPU to watch this demo which requires compute shaders support. To enable WebGPU please use Chrome or Edge with WebGPU enabled.**";
+            info.color = "red";
+        }
+        info.width = "90%";
+        info.paddingLeft = "20px";
+        info.paddingRight = "20px";
         info.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
         info.textVerticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-        info.color = "red";
-        info.fontSize = "24px";
+        info.fontSize = "22px";
         info.fontStyle = "bold";
         info.textWrapping = true;
         panel.addControl(info);
