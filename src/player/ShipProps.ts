@@ -81,35 +81,25 @@ export class ShipProps {
         const steeringWheel = this._scene.getMeshByName("Steering Wheel") || this._scene.getTransformNodeByName("Steering Wheel");
         if (steeringWheel) {
             this.helmWheelMesh = steeringWheel;
-            // Position wheel prominently on the quarterdeck overlooking the main deck and sea
-            // In ship coordinates: x=0, y=2.75, z=3.30
+            // Position wheel prominently at the aft stern conning station on the poop deck
+            // In ship coordinates: x=0.50, y=2.90, z=5.30
             const emptyScale = steeringWheel.parent && (steeringWheel.parent as any).scaling ? (steeringWheel.parent as any).scaling.x : 3.72825;
-            steeringWheel.position.set(0, 2.75 / emptyScale, 3.30 / emptyScale);
+            steeringWheel.position.set(.10 / emptyScale, 2.90 / emptyScale, 5.30 / emptyScale);
             // Scale wheel up to authentic naval helm size (diameter ~0.85m)
             steeringWheel.scaling.setAll(steeringWheel.scaling.x * 2.6);
             if (steeringWheel.rotationQuaternion) {
                 this.baseWheelQuaternion = steeringWheel.rotationQuaternion.clone();
             }
 
-            // Build handsome weathered mahogany helm binnacle / pedestal stand under wheel
-            const binnacleMat = new BABYLON.PBRMaterial("binnacleMat", this._scene);
-            binnacleMat.albedoColor = new BABYLON.Color3(0.35, 0.20, 0.12);
-            binnacleMat.roughness = 0.6;
-            binnacleMat.metallic = 0.1;
-            const binnacle = BABYLON.MeshBuilder.CreateBox("helmBinnacle", { width: 0.35, height: 0.75, depth: 0.35 }, this._scene);
-            binnacle.parent = this._shipRoot;
-            binnacle.position.set(0, 2.45 + 0.375, 3.30);
-            binnacle.material = binnacleMat;
-
-            // Brass compass dome on top of binnacle
-            const brassDomeMat = new BABYLON.PBRMaterial("brassDomeMat", this._scene);
-            brassDomeMat.albedoColor = new BABYLON.Color3(0.92, 0.78, 0.28);
-            brassDomeMat.metallic = 0.95;
-            brassDomeMat.roughness = 0.25;
-            const dome = BABYLON.MeshBuilder.CreateSphere("compassDome", { diameter: 0.18 }, this._scene);
-            dome.parent = this._shipRoot;
-            dome.position.set(0, 2.45 + 0.84, 3.30);
-            dome.material = brassDomeMat;
+            // Slender wooden naval helm pedestal pillar under the wheel axle
+            const postMat = new BABYLON.PBRMaterial("helmPostMat", this._scene);
+            postMat.albedoColor = new BABYLON.Color3(0.38, 1.22, 0.12);
+            postMat.roughness = 0.65;
+            postMat.metallic = 0.05;
+            const post = BABYLON.MeshBuilder.CreateCylinder("helmPost", { diameter: 0.14, height: 0.60 }, this._scene);
+            post.parent = this._shipRoot;
+            post.position.set(0.50, 2.45 + 0.30, 5.30);
+            post.material = postMat;
         }
 
         const sails = this._scene.getMeshByName("Sails");

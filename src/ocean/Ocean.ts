@@ -40,7 +40,7 @@ export class Ocean {
     private _canvas: HTMLCanvasElement = null as any;
     private _player: ShipDeckPlayer | null = null;
     private _sailHeight = 1;
-    private _sailElevation = 2;
+    private _sailElevation = 2.5;
     private _windWaveSpeed = 2.6;
     private _windWaveIntensity = 0.12;
 

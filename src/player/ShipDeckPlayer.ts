@@ -177,7 +177,7 @@ export class ShipDeckPlayer {
     }
 
     private _clampToDeckBounds(pos: BABYLON.Vector3): void {
-        pos.z = BABYLON.Scalar.Clamp(pos.z, -4.3, 5.6);
+        pos.z = BABYLON.Scalar.Clamp(pos.z, -4.3, 7.05);
 
         let maxX = 1.55;
         if (pos.z < -3.2) {
@@ -298,12 +298,12 @@ export class ShipDeckPlayer {
         this.gameplayState = PlayerGameplayState.Helm;
         this._savedWalkPos.copyFrom(this._localPos);
 
-        // Position captain directly at the helm station overlooking the deck
-        // Wheel is at Z = 3.30, Captain stands at Z = 3.90 on the quarterdeck (Y = 2.45)
-        this._localPos.set(0, 2.45 + this._eyeHeight, 3.90);
-        this._targetYaw = 0; // Facing forward towards bow (-Z)
+        // Position captain at the authentic aft stern conning station on the poop deck
+        // Wheel is at X = 0.50, Z = 5.30, Captain stands at X = 0.50, Z = 5.75 overlooking the vessel
+        this._localPos.set(0.50, 2.45 + this._eyeHeight, 5.75);
+        this._targetYaw = 0; // Facing forward towards bow (-Z) down the open starboard gangway
         this._currentYaw = 0;
-        this._targetPitch = -0.10; // Slightly looking down past the wheel towards deck & open sea
+        this._targetPitch = -0.10; // Looking over the wheel down across the entire ship
         this._currentPitch = -0.10;
         this._currentVelocity.set(0, 0, 0);
 
@@ -321,8 +321,8 @@ export class ShipDeckPlayer {
     public exitHelmState(): void {
         this.gameplayState = PlayerGameplayState.Walking;
         this.interactiveObjects.isAtHelm = false;
-        // Step back slightly from the wheel onto quarterdeck
-        this._localPos.set(0, 2.45 + this._eyeHeight, 4.25);
+        // Step back slightly from the wheel onto aft poop deck
+        this._localPos.set(0.50, 2.45 + this._eyeHeight, 5.85);
 
         if (this._crosshair) this._crosshair.style.display = "block";
         if (this._helmHUD) this._helmHUD.style.display = "none";
