@@ -442,7 +442,7 @@ export class Ocean {
             );
 
             // Initialize First-Person Player on the Pirate Ship Deck
-            this._player = new ShipDeckPlayer(this._scene, this._engine, this._canvas, shipRoot, this._camera);
+            this._player = new ShipDeckPlayer(this._scene, this._engine, this._canvas, shipRoot, this._camera, this._buoyancy);
             this._player.props.setSailHeight(this._sailHeight);
             this._player.props.setSailElevation(this._sailElevation);
             this._player.props.windWaveSpeed = this._windWaveSpeed;

@@ -7,18 +7,29 @@ export class ShipProps {
 
     // Interactive 3D Objects
     public chestLidNode: BABYLON.TransformNode | null = null;
+    public chestBaseMesh: BABYLON.Mesh | null = null;
+    public chestLidMesh: BABYLON.Mesh | null = null;
     public chestGlowLight: BABYLON.PointLight | null = null;
     public chestParticles: BABYLON.ParticleSystem | null = null;
     public isChestOpen = false;
 
     // Weapon Rack & Cutlass
+    public weaponRackRoot: BABYLON.TransformNode | null = null;
     public cutlassViewMesh: BABYLON.TransformNode | null = null;
     public isCutlassEquipped = false;
     public isSwinging = false;
 
     // Repair Point
+    public repairRootNode: BABYLON.TransformNode | null = null;
     public repairMesh: BABYLON.Mesh | null = null;
+    public repairNail1: BABYLON.Mesh | null = null;
+    public repairNail2: BABYLON.Mesh | null = null;
+    public repairProgress = 0.65;
     public isRepaired = false;
+
+    // Ship Lookout Edge Marker
+    public shipEdgeRoot: BABYLON.TransformNode | null = null;
+    public shipEdgePlateMesh: BABYLON.Mesh | null = null;
 
     // Cannon References
     public portCannonMesh: BABYLON.TransformNode | null = null;
@@ -34,6 +45,7 @@ export class ShipProps {
     public baseTiesScaling: BABYLON.Vector3 | null = null;
     public baseTiesPosition: BABYLON.Vector3 | null = null;
     public isSailsTrimmed = false;
+    public sailTrim = 0.85;
 
     // Wind wave air animation properties
     public windWaveEnabled = true;
@@ -133,6 +145,7 @@ export class ShipProps {
         chestBase.position.y = 0.175;
         chestBase.material = woodMat;
         chestBase.parent = chestRoot;
+        this.chestBaseMesh = chestBase;
 
         // Brass Straps on Base
         const strap1 = BABYLON.MeshBuilder.CreateBox("strap1", { width: 0.71, height: 0.36, depth: 0.06 }, this._scene);
@@ -170,6 +183,7 @@ export class ShipProps {
         lidMesh.position.set(0, 0, 0.22);
         lidMesh.material = woodMat;
         lidMesh.parent = lidPivot;
+        this.chestLidMesh = lidMesh;
 
         // Gold Pile inside chest (revealed on open)
         const goldPile = BABYLON.MeshBuilder.CreateSphere("goldPile", { diameterX: 0.55, diameterY: 0.18, diameterZ: 0.35, segments: 8 }, this._scene);
@@ -214,6 +228,7 @@ export class ShipProps {
         rackRoot.parent = this._shipRoot;
         rackRoot.position.set(0.95, 2.45, 2.2);
         rackRoot.rotation = new BABYLON.Vector3(0, -Math.PI / 2, 0);
+        this.weaponRackRoot = rackRoot;
 
         const rackWoodMat = new BABYLON.PBRMaterial("rackWoodMat", this._scene);
         rackWoodMat.albedoColor = new BABYLON.Color3(0.30, 0.18, 0.10);
@@ -339,6 +354,7 @@ export class ShipProps {
         const repairRoot = new BABYLON.TransformNode("repairPointRoot", this._scene);
         repairRoot.parent = this._shipRoot;
         repairRoot.position.set(-1.25, 1.56, -1.2);
+        this.repairRootNode = repairRoot;
 
         const brokenWoodMat = new BABYLON.PBRMaterial("brokenWoodMat", this._scene);
         brokenWoodMat.albedoColor = new BABYLON.Color3(0.28, 0.16, 0.09);
@@ -361,12 +377,14 @@ export class ShipProps {
         nail1.rotation.z = 0.3;
         nail1.material = nailMat;
         nail1.parent = repairRoot;
+        this.repairNail1 = nail1;
 
         const nail2 = BABYLON.MeshBuilder.CreateCylinder("nail2", { diameter: 0.02, height: 0.09 }, this._scene);
         nail2.position.set(0.14, 0.07, 0.38);
         nail2.rotation.z = -0.25;
         nail2.material = nailMat;
         nail2.parent = repairRoot;
+        this.repairNail2 = nail2;
     }
 
     /**
@@ -377,6 +395,7 @@ export class ShipProps {
         edgeRoot.parent = this._shipRoot;
         // Front bow rail lookout
         edgeRoot.position.set(0, 2.05, -3.85);
+        this.shipEdgeRoot = edgeRoot;
 
         const brassMat = new BABYLON.PBRMaterial("edgeBrassMat", this._scene);
         brassMat.albedoColor = new BABYLON.Color3(0.88, 0.72, 0.28);
@@ -388,6 +407,7 @@ export class ShipProps {
         plate.position.y = 0.01;
         plate.material = brassMat;
         plate.parent = edgeRoot;
+        this.shipEdgePlateMesh = plate;
 
         const pointer = BABYLON.MeshBuilder.CreateCylinder("compassPointer", { diameterTop: 0, diameterBottom: 0.05, height: 0.28, tessellation: 3 }, this._scene);
         pointer.rotation.x = Math.PI / 2;
@@ -435,26 +455,38 @@ export class ShipProps {
     /**
      * Executes cannon firing FX: recoil, flash light, fire & smoke burst, projectile arc, and ocean splash
      */
-    public fireCannon(isStarboard: boolean): void {
+    public fireCannon(isStarboard: boolean, elevationAngleDeg = 4.0, traverseAngleDeg = 0.0): void {
         // Cannon world position on deck
         const localPos = isStarboard ? new BABYLON.Vector3(1.6, 1.6, 0.5) : new BABYLON.Vector3(-1.6, 1.6, 0.5);
         const worldPos = BABYLON.Vector3.TransformCoordinates(localPos, this._shipRoot.getWorldMatrix());
 
-        // Direction firing out into the sea perpendicular to the ship
-        const shipRight = this._shipRoot.right;
-        const fireDir = (isStarboard ? shipRight.scale(1) : shipRight.scale(-1)).add(new BABYLON.Vector3(0, 0.12, 0)).normalize();
+        // Direction firing out into the sea:
+        // Base normal: +X for Starboard, -X for Port
+        // Traverse turns around Y (towards -Z or +Z)
+        // Elevation tilts up (+Y)
+        const radElev = (elevationAngleDeg * Math.PI) / 180;
+        const radTrav = (traverseAngleDeg * Math.PI) / 180;
+
+        const baseSign = isStarboard ? 1 : -1;
+        const dirLocal = new BABYLON.Vector3(
+            baseSign * Math.cos(radElev) * Math.cos(radTrav),
+            Math.sin(radElev),
+            -baseSign * Math.cos(radElev) * Math.sin(radTrav)
+        );
+
+        const fireDir = BABYLON.Vector3.TransformNormal(dirLocal, this._shipRoot.getWorldMatrix()).normalize();
 
         // 1. Muzzle Flash Light
         const flashLight = new BABYLON.PointLight("cannonFlash", worldPos.clone(), this._scene);
-        flashLight.diffuse = new BABYLON.Color3(1.0, 0.65, 0.2);
-        flashLight.intensity = 25;
-        flashLight.range = 20;
+        flashLight.diffuse = new BABYLON.Color3(1.0, 0.75, 0.25);
+        flashLight.intensity = 35;
+        flashLight.range = 25;
 
         let flashTimer = 0;
         const flashObserver = this._scene.onBeforeRenderObservable.add(() => {
             flashTimer += 0.016;
             flashLight.intensity *= 0.65;
-            if (flashTimer > 0.15) {
+            if (flashTimer > 0.18) {
                 flashLight.dispose();
                 this._scene.onBeforeRenderObservable.remove(flashObserver);
             }
@@ -465,27 +497,27 @@ export class ShipProps {
             this._cannonFireSystem.emitter = worldPos;
             this._cannonFireSystem.direction1 = fireDir.scale(0.8).add(new BABYLON.Vector3(-0.3, 0.2, -0.3));
             this._cannonFireSystem.direction2 = fireDir.scale(1.2).add(new BABYLON.Vector3(0.3, 0.4, 0.3));
-            this._cannonFireSystem.manualEmitCount = 40;
+            this._cannonFireSystem.manualEmitCount = 50;
             this._cannonFireSystem.start();
 
             this._cannonSmokeSystem.emitter = worldPos;
             this._cannonSmokeSystem.direction1 = fireDir.scale(0.5).add(new BABYLON.Vector3(-0.5, 0.5, -0.5));
             this._cannonSmokeSystem.direction2 = fireDir.scale(1.0).add(new BABYLON.Vector3(0.5, 0.8, 0.5));
-            this._cannonSmokeSystem.manualEmitCount = 90;
+            this._cannonSmokeSystem.manualEmitCount = 100;
             this._cannonSmokeSystem.start();
         }
 
         // 3. Cannonball Projectile flying into the ocean
         const ballMat = new BABYLON.PBRMaterial("cannonballMat", this._scene);
         ballMat.albedoColor = new BABYLON.Color3(0.08, 0.08, 0.1);
-        ballMat.metallic = 0.9;
-        ballMat.roughness = 0.3;
+        ballMat.metallic = 0.95;
+        ballMat.roughness = 0.25;
 
-        const ball = BABYLON.MeshBuilder.CreateSphere("cannonball", { diameter: 0.22 }, this._scene);
+        const ball = BABYLON.MeshBuilder.CreateSphere("cannonball", { diameter: 0.24 }, this._scene);
         ball.position = worldPos.clone();
         ball.material = ballMat;
 
-        let velocity = fireDir.scale(32);
+        let velocity = fireDir.scale(36);
         let alive = true;
 
         const ballObserver = this._scene.onBeforeRenderObservable.add(() => {
@@ -565,11 +597,10 @@ export class ShipProps {
     }
 
     /**
-     * Animates repairing the broken hull plank
+     * Advances repair on the broken hull plank with hammer strike FX
      */
-    public repairHullPlank(): void {
-        if (!this.repairMesh || this.isRepaired) return;
-        this.isRepaired = true;
+    public hammerRepairPlank(): { progress: number; isFinished: boolean } {
+        if (!this.repairMesh) return { progress: 1.0, isFinished: true };
 
         // Woodchips and sparks particle puff
         const puff = new BABYLON.ParticleSystem("repairSparks", 60, this._scene);
@@ -587,12 +618,36 @@ export class ShipProps {
         puff.disposeOnStop = true;
         puff.start();
 
-        // Reposition plank flush and change to polished reinforced oak
-        this.repairMesh.rotation.set(0, 0, 0);
-        const fixedMat = new BABYLON.PBRMaterial("fixedPlankMat", this._scene);
-        fixedMat.albedoColor = new BABYLON.Color3(0.48, 0.32, 0.18);
-        fixedMat.roughness = 0.65;
-        this.repairMesh.material = fixedMat;
+        this.repairProgress = Math.min(1.0, this.repairProgress + 0.15);
+
+        // Progressively align plank and sink nails
+        const t = (this.repairProgress - 0.6) / 0.4;
+        this.repairMesh.rotation.set(0.08 * (1 - t), 0.05 * (1 - t), -0.06 * (1 - t));
+
+        if (this.repairNail1) {
+            this.repairNail1.position.y = 0.06 - t * 0.04;
+            this.repairNail1.rotation.z = 0.3 * (1 - t);
+        }
+        if (this.repairNail2) {
+            this.repairNail2.position.y = 0.07 - t * 0.04;
+            this.repairNail2.rotation.z = -0.25 * (1 - t);
+        }
+
+        if (this.repairProgress >= 1.0) {
+            this.isRepaired = true;
+            this.repairMesh.rotation.set(0, 0, 0);
+            const fixedMat = new BABYLON.PBRMaterial("fixedPlankMat", this._scene);
+            fixedMat.albedoColor = new BABYLON.Color3(0.48, 0.32, 0.18);
+            fixedMat.roughness = 0.65;
+            this.repairMesh.material = fixedMat;
+            return { progress: 1.0, isFinished: true };
+        }
+
+        return { progress: this.repairProgress, isFinished: false };
+    }
+
+    public repairHullPlank(): void {
+        this.hammerRepairPlank();
     }
 
     /**
@@ -735,5 +790,62 @@ export class ShipProps {
         if (this.helmWheelMesh) {
             this.helmWheelMesh.rotation.z = this.helmAngle;
         }
+    }
+
+    /**
+     * Adjusts sail canvas trim (0.2 = furled to 1.0 = full billow)
+     */
+    public setSailTrim(trim01: number): void {
+        this.sailTrim = BABYLON.Scalar.Clamp(trim01, 0.2, 1.0);
+        this.setSailHeight(0.9 + this.sailTrim * 0.4);
+        this.windWaveSpeed = 1.5 + this.sailTrim * 2.2;
+        this.windWaveIntensity = 0.06 + this.sailTrim * 0.12;
+    }
+
+    /**
+     * Gathers all meshes associated with an interactive object for 3D highlighting
+     */
+    public getHighlightMeshesForObject(objectId: string): BABYLON.Mesh[] {
+        const meshes: BABYLON.Mesh[] = [];
+
+        const collectMeshes = (node: BABYLON.Nullable<BABYLON.Node>) => {
+            if (!node) return;
+            if (node instanceof BABYLON.Mesh) {
+                meshes.push(node);
+            }
+            const children = node.getChildren((child) => child instanceof BABYLON.Mesh, false) as BABYLON.Mesh[];
+            meshes.push(...children);
+        };
+
+        switch (objectId) {
+            case 'helm':
+                collectMeshes(this.helmWheelMesh);
+                break;
+            case 'starboard_cannon':
+            case 'port_cannon':
+                collectMeshes(this.starboardCannonMesh || this.portCannonMesh);
+                break;
+            case 'sails':
+                if (this.sailsMesh) meshes.push(this.sailsMesh);
+                if (this.tiesMesh) meshes.push(this.tiesMesh);
+                break;
+            case 'repair_point':
+                if (this.repairMesh) meshes.push(this.repairMesh);
+                if (this.repairNail1) meshes.push(this.repairNail1);
+                if (this.repairNail2) meshes.push(this.repairNail2);
+                break;
+            case 'weapon_rack':
+                collectMeshes(this.weaponRackRoot);
+                break;
+            case 'treasure_chest':
+                if (this.chestBaseMesh) meshes.push(this.chestBaseMesh);
+                if (this.chestLidMesh) meshes.push(this.chestLidMesh);
+                break;
+            case 'ship_edge':
+                if (this.shipEdgePlateMesh) meshes.push(this.shipEdgePlateMesh);
+                break;
+        }
+
+        return meshes;
     }
 }

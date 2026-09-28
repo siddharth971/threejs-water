@@ -41,6 +41,14 @@ export class Buoyancy {
         this._meshes.push({ mesh, frame, yOffset, spaceCoordinates, initQuaternion: mesh.rotationQuaternion!.clone() });
     }
 
+    public rotateMeshYaw(mesh: BABYLON.TransformNode, deltaYaw: number): void {
+        const item = this._meshes.find(m => m.mesh === mesh);
+        if (item) {
+            const rot = BABYLON.Quaternion.FromEulerAngles(0, deltaYaw, 0);
+            item.initQuaternion.multiplyToRef(rot, item.initQuaternion);
+        }
+    }
+
     public set size(size: number) {
         this._size = size;
     }

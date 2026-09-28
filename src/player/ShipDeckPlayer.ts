@@ -1,6 +1,16 @@
 import { ShipAudio } from './ShipAudio';
 import { ShipProps } from './ShipProps';
 import { InteractiveShipObjects, InteractiveObject } from './InteractiveShipObjects';
+import { Buoyancy } from '../ocean/Buoyancy';
+
+export enum PlayerGameplayState {
+    Walking = 'walking',
+    Helm = 'helm',
+    CannonAim = 'cannon_aim',
+    SailAdjust = 'sail_adjust',
+    Repairing = 'repairing',
+    Spyglass = 'spyglass'
+}
 
 export class ShipDeckPlayer {
     private _scene: BABYLON.Scene;
@@ -8,6 +18,7 @@ export class ShipDeckPlayer {
     private _canvas: HTMLCanvasElement;
     private _shipRoot: BABYLON.TransformNode;
     private _camera: BABYLON.FreeCamera;
+    private _buoyancy: Buoyancy | null = null;
 
     // Hierarchy
     private _playerNode: BABYLON.TransformNode;
@@ -18,8 +29,12 @@ export class ShipDeckPlayer {
     public props: ShipProps;
     public interactiveObjects: InteractiveShipObjects;
 
+    // Gameplay State Machine
+    public gameplayState: PlayerGameplayState = PlayerGameplayState.Walking;
+
     // Movement state (Ship local coordinates)
     private _localPos: BABYLON.Vector3;
+    private _savedWalkPos = new BABYLON.Vector3(0, 1.55 + 1.62, 0.5);
     private _targetYaw = 0; // Face forward towards bow (-Z) initially
     private _currentYaw = 0;
     private _targetPitch = 0;
@@ -51,28 +66,53 @@ export class ShipDeckPlayer {
     private _spectatorPos = new BABYLON.Vector3(-17.3, 5, -9);
     private _spectatorRot = new BABYLON.Vector3(0.214, 1.597, 0);
 
-    // HTML UI Elements
-    private _promptContainer: HTMLElement | null = null;
-    private _promptKey: HTMLElement | null = null;
-    private _promptText: HTMLElement | null = null;
-    private _promptSub: HTMLElement | null = null;
+    // --- Helm State Properties ---
+    public rudderAngle = 0; // -32 deg to +32 deg
+    public shipThrottle = 6.0; // Knots (-2 to +14)
+    public currentShipSpeed = 6.0;
+
+    // --- Cannon Aim State Properties ---
+    public isStarboardCannon = true;
+    public cannonElevation = 4.0; // deg (-6 to +20)
+    public cannonTraverse = 0.0; // deg (-25 to +25)
+    public cannonReloadTimer = 0; // cooldown seconds
+    private _cannonRecoilTime = 0;
+
+    // --- Sail Adjust State Properties ---
+    public sailTrimPercent = 85;
+
+    // --- HTML UI Elements ---
+    private _cardContainer: HTMLElement | null = null;
+    private _cardTitle: HTMLElement | null = null;
+    private _cardAction: HTMLElement | null = null;
+    private _cardSub: HTMLElement | null = null;
+
     private _crosshair: HTMLElement | null = null;
     private _toastContainer: HTMLElement | null = null;
     private _spyglassOverlay: HTMLElement | null = null;
     private _embarkOverlay: HTMLElement | null = null;
+
+    // Dedicated State HUDs
+    private _helmHUD: HTMLElement | null = null;
+    private _cannonHUD: HTMLElement | null = null;
+    private _sailHUD: HTMLElement | null = null;
+    private _repairHUD: HTMLElement | null = null;
+    private _deckNavBar: HTMLElement | null = null;
 
     constructor(
         scene: BABYLON.Scene,
         engine: BABYLON.Engine,
         canvas: HTMLCanvasElement,
         shipRoot: BABYLON.TransformNode,
-        camera: BABYLON.FreeCamera
+        camera: BABYLON.FreeCamera,
+        buoyancy?: Buoyancy
     ) {
         this._scene = scene;
         this.engine = engine;
         this._canvas = canvas;
         this._shipRoot = shipRoot;
         this._camera = camera;
+        if (buoyancy) this._buoyancy = buoyancy;
 
         // Initialize Audio and Props
         this.audio = new ShipAudio();
@@ -80,8 +120,8 @@ export class ShipDeckPlayer {
         this.interactiveObjects = new InteractiveShipObjects(scene, shipRoot, this.audio, this.props);
 
         // Spawn player on main deck facing forward towards the bow
-        // Local deck coords: x=0, z=0.5, y=main deck height
         this._localPos = new BABYLON.Vector3(0, this._getDeckHeight(0, 0.5) + this._eyeHeight, 0.5);
+        this._savedWalkPos.copyFrom(this._localPos);
 
         // Create player hierarchy parented to shipRoot
         this._playerNode = new BABYLON.TransformNode("playerDeckRig", scene);
@@ -109,15 +149,12 @@ export class ShipDeckPlayer {
     }
 
     private _setupCamera(): void {
-        // Detach default FreeCamera inputs so our custom FPS controller has full control
         this._camera.inputs.clear();
-
-        // Reparent camera to pitch node
         this._camera.parent = this._pitchNode;
         this._camera.position.set(0, 0, 0);
         this._camera.rotation.set(0, 0, 0);
         this._camera.minZ = 0.05;
-        this._camera.fov = 1.05; // ~60 deg vertical, ~90 deg horizontal
+        this._camera.fov = 1.05;
     }
 
     private _getDeckHeight(_x: number, z: number): number {
@@ -140,16 +177,13 @@ export class ShipDeckPlayer {
     }
 
     private _clampToDeckBounds(pos: BABYLON.Vector3): void {
-        // Z limits from bow (-4.4) to stern quarterdeck (+5.6)
         pos.z = BABYLON.Scalar.Clamp(pos.z, -4.3, 5.6);
 
         let maxX = 1.55;
-        // Narrowing at bow
         if (pos.z < -3.2) {
-            const factor = (pos.z - (-4.3)) / (-3.2 - (-4.3)); // 0 at -4.3, 1 at -3.2
+            const factor = (pos.z - (-4.3)) / (-3.2 - (-4.3));
             maxX = BABYLON.Scalar.Lerp(0.75, 1.50, factor);
         } else if (pos.z > 2.0) {
-            // Quarterdeck width
             maxX = 1.45;
             if (pos.z > 5.0) {
                 maxX = 1.25;
@@ -164,23 +198,37 @@ export class ShipDeckPlayer {
             const key = e.key.toLowerCase();
             this._keys[key] = true;
 
-            // Audio init on user gesture
             this.audio.init();
 
-            // Interact with nearest object
+            // F Key: Interact or Exit current gameplay state
             if (key === "f") {
-                this._onInteract();
+                this._handleInteractKey();
             }
 
-            // Space: Jump
-            if (key === " " && this._isGrounded && this._isFirstPerson && !this.interactiveObjects.isAtHelm) {
-                this._verticalVelocity = this._jumpForce;
-                this._isGrounded = false;
-                this.audio.playFootstep();
+            // ESC Key: Exit current interactive state back to walking
+            if (key === "escape") {
+                if (this.gameplayState !== PlayerGameplayState.Walking) {
+                    this.exitToWalkingState();
+                }
+            }
+
+            // Space: Jump (when walking) or action trigger (fire cannon, hammer nail)
+            if (key === " ") {
+                if (this.gameplayState === PlayerGameplayState.Walking) {
+                    if (this._isGrounded && this._isFirstPerson) {
+                        this._verticalVelocity = this._jumpForce;
+                        this._isGrounded = false;
+                        this.audio.playFootstep();
+                    }
+                } else if (this.gameplayState === PlayerGameplayState.CannonAim) {
+                    this.fireActiveCannon();
+                } else if (this.gameplayState === PlayerGameplayState.Repairing) {
+                    this.hammerRepair();
+                }
             }
 
             // C: Toggle between First Person on Deck and Free Spectator Camera
-            if (key === "c") {
+            if (key === "c" && this.gameplayState === PlayerGameplayState.Walking) {
                 this.toggleCameraMode();
             }
         });
@@ -190,7 +238,6 @@ export class ShipDeckPlayer {
             this._keys[key] = false;
         });
 
-        // Mouse look with Pointer Lock
         this._canvas.addEventListener("click", () => {
             this.audio.init();
             if (!this._isPointerLocked) {
@@ -208,27 +255,283 @@ export class ShipDeckPlayer {
 
         window.addEventListener("mousemove", (e) => {
             if (!this._isPointerLocked || !this._isFirstPerson) return;
-
-            // Accumulate raw mouse deltas for frame-rate independent smoothing
             this._mouseDeltaX += e.movementX;
             this._mouseDeltaY += e.movementY;
         });
 
-        // Left Click: Attack / Swing Cutlass
+        // Left Click: State actions or Cutlass swing
         window.addEventListener("mousedown", (e) => {
             if (e.button === 0 && this._isPointerLocked && this._isFirstPerson) {
-                if (this.props.isCutlassEquipped) {
-                    this.audio.playCutlassSwing();
-                    this.props.swingCutlass();
+                if (this.gameplayState === PlayerGameplayState.CannonAim) {
+                    this.fireActiveCannon();
+                } else if (this.gameplayState === PlayerGameplayState.Repairing) {
+                    this.hammerRepair();
+                } else if (this.gameplayState === PlayerGameplayState.Walking) {
+                    if (this.props.isCutlassEquipped) {
+                        this.audio.playCutlassSwing();
+                        this.props.swingCutlass();
+                    }
                 }
             }
         });
     }
 
-    private _onInteract(): void {
+    private _handleInteractKey(): void {
+        // If currently in a dedicated gameplay state, pressing F exits back to walking
+        if (this.gameplayState !== PlayerGameplayState.Walking) {
+            this.exitToWalkingState();
+            return;
+        }
+
+        // Otherwise interact with nearest object in range
         const nearest = this.interactiveObjects.nearestObject;
         if (nearest) {
             nearest.interact(this.audio, this.props, this);
+        }
+    }
+
+    // =========================================================================
+    // GAMEPLAY STATE MACHINE: HELM
+    // =========================================================================
+
+    public enterHelmState(): void {
+        this.gameplayState = PlayerGameplayState.Helm;
+        this._savedWalkPos.copyFrom(this._localPos);
+
+        // Position captain directly behind the steering wheel
+        this._localPos.set(0, 2.45 + this._eyeHeight, 4.75);
+        this._targetYaw = 0;
+        this._currentYaw = 0;
+        this._targetPitch = -0.06;
+        this._currentPitch = -0.06;
+        this._currentVelocity.set(0, 0, 0);
+
+        this.interactiveObjects.clearHighlight();
+        this.interactiveObjects.isAtHelm = true;
+        this.audio.playHelmCreak();
+
+        if (this._crosshair) this._crosshair.style.display = "none";
+        if (this._helmHUD) this._helmHUD.style.display = "flex";
+        if (this._deckNavBar) this._deckNavBar.style.display = "none";
+
+        this.showToast("⚓ Helm Station active! Steer rudder with [A] / [D], adjust sails with [W] / [S]. Press [F] to release.", "CONTROL SHIP");
+    }
+
+    public exitHelmState(): void {
+        this.gameplayState = PlayerGameplayState.Walking;
+        this.interactiveObjects.isAtHelm = false;
+        this._localPos.set(0, 2.45 + this._eyeHeight, 4.6);
+
+        if (this._crosshair) this._crosshair.style.display = "block";
+        if (this._helmHUD) this._helmHUD.style.display = "none";
+        if (this._deckNavBar) this._deckNavBar.style.display = "flex";
+
+        this.showToast("Released the helm. Free walking active.", "HELM RELEASED");
+    }
+
+    // =========================================================================
+    // GAMEPLAY STATE MACHINE: CANNON AIM & FIRE
+    // =========================================================================
+
+    public enterCannonState(isStarboard: boolean): void {
+        this.gameplayState = PlayerGameplayState.CannonAim;
+        this.isStarboardCannon = isStarboard;
+        this._savedWalkPos.copyFrom(this._localPos);
+
+        // Lock camera behind gun carriage sighting through gunport
+        if (isStarboard) {
+            this._localPos.set(0.65, 1.55 + 1.25, 0.5);
+            this._targetYaw = -Math.PI / 2; // Face starboard (+X)
+            this._currentYaw = -Math.PI / 2;
+        } else {
+            this._localPos.set(-0.65, 1.55 + 1.25, 0.5);
+            this._targetYaw = Math.PI / 2; // Face port (-X)
+            this._currentYaw = Math.PI / 2;
+        }
+
+        this.cannonElevation = 4.0;
+        this.cannonTraverse = 0.0;
+        this._targetPitch = (-this.cannonElevation * Math.PI) / 180;
+        this._currentPitch = this._targetPitch;
+        this._currentVelocity.set(0, 0, 0);
+
+        this.interactiveObjects.clearHighlight();
+
+        if (this._crosshair) this._crosshair.style.display = "none";
+        if (this._cannonHUD) this._cannonHUD.style.display = "flex";
+        if (this._deckNavBar) this._deckNavBar.style.display = "none";
+
+        const sideName = isStarboard ? "Starboard" : "Port";
+        this.showToast(`🎯 Sighting ${sideName} broadside cannon! Aim with Mouse or WASD. Click or Space to FIRE!`, "AIM CANNON");
+    }
+
+    public fireActiveCannon(): void {
+        if (this.cannonReloadTimer > 0) {
+            return;
+        }
+
+        this.audio.playCannonBlast();
+        this.props.fireCannon(this.isStarboardCannon, this.cannonElevation, this.cannonTraverse);
+
+        // Recoil shake
+        this._cannonRecoilTime = 0.35;
+        this.cannonReloadTimer = 2.4;
+
+        this.showToast("💥 BOOM! Heavy broadside round shot unleashed into the waves!", "BROADSIDE FIRED");
+    }
+
+    public exitCannonState(): void {
+        this.gameplayState = PlayerGameplayState.Walking;
+
+        // Step back onto deck
+        const returnX = this.isStarboardCannon ? 0.35 : -0.35;
+        this._localPos.set(returnX, 1.55 + this._eyeHeight, 0.5);
+        this._targetPitch = 0;
+
+        if (this._crosshair) this._crosshair.style.display = "block";
+        if (this._cannonHUD) this._cannonHUD.style.display = "none";
+        if (this._deckNavBar) this._deckNavBar.style.display = "flex";
+
+        this.showToast("Stepped back from the cannon. Free walking active.", "CANNON RELEASED");
+    }
+
+    // =========================================================================
+    // GAMEPLAY STATE MACHINE: ADJUST SAIL
+    // =========================================================================
+
+    public enterSailState(): void {
+        this.gameplayState = PlayerGameplayState.SailAdjust;
+        this._savedWalkPos.copyFrom(this._localPos);
+
+        // Stand at the foot of the mast looking up at the canvas
+        this._localPos.set(0, 1.55 + this._eyeHeight, 2.0);
+        this._targetYaw = 0;
+        this._currentYaw = 0;
+        this._targetPitch = 0.52; // Look up ~30 deg
+        this._currentPitch = 0.52;
+        this._currentVelocity.set(0, 0, 0);
+
+        this.interactiveObjects.clearHighlight();
+        this.audio.playSailFlutter();
+
+        if (this._crosshair) this._crosshair.style.display = "none";
+        if (this._sailHUD) this._sailHUD.style.display = "flex";
+        if (this._deckNavBar) this._deckNavBar.style.display = "none";
+
+        this.showToast("⛵ Rigging Station active! Use [W] to Hoist/Billow Canvas, [S] to Reef for heavy seas.", "ADJUST SAIL");
+    }
+
+    public exitSailState(): void {
+        this.gameplayState = PlayerGameplayState.Walking;
+        this._localPos.set(0, 1.55 + this._eyeHeight, 1.8);
+        this._targetPitch = 0;
+
+        if (this._crosshair) this._crosshair.style.display = "block";
+        if (this._sailHUD) this._sailHUD.style.display = "none";
+        if (this._deckNavBar) this._deckNavBar.style.display = "flex";
+
+        this.showToast("Sail rigging secured. Free walking active.", "SAIL SECURED");
+    }
+
+    // =========================================================================
+    // GAMEPLAY STATE MACHINE: REPAIR HULL
+    // =========================================================================
+
+    public enterRepairState(): void {
+        this.gameplayState = PlayerGameplayState.Repairing;
+        this._savedWalkPos.copyFrom(this._localPos);
+
+        // Stand beside damaged plank looking down
+        this._localPos.set(-1.15, 1.55 + this._eyeHeight, -1.2);
+        this._targetYaw = Math.PI * 0.15;
+        this._currentYaw = this._targetYaw;
+        this._targetPitch = -0.72; // Look down at deck planks
+        this._currentPitch = -0.72;
+        this._currentVelocity.set(0, 0, 0);
+
+        this.interactiveObjects.clearHighlight();
+
+        if (this._crosshair) this._crosshair.style.display = "none";
+        if (this._repairHUD) this._repairHUD.style.display = "flex";
+        if (this._deckNavBar) this._deckNavBar.style.display = "none";
+
+        this.showToast("🔨 Damaged oak planking! Left-Click or Space to hammer iron nails & reinforce hull.", "REPAIR HULL");
+    }
+
+    public hammerRepair(): void {
+        this.audio.playHammer();
+        const res = this.props.hammerRepairPlank();
+
+        // Small camera impact jolt
+        this._targetPitch -= 0.05;
+
+        const pct = Math.round(res.progress * 100);
+        if (res.isFinished) {
+            this.showToast("🏆 Hull integrity restored to 100%! Oak timber fully caulked and seaworthy.", "HULL REPAIRED");
+        } else {
+            this.showToast(`🔨 Thwack! Nail driven deeper. Hull integrity: ${pct}%`, "REPAIRING HULL");
+        }
+    }
+
+    public exitRepairState(): void {
+        this.gameplayState = PlayerGameplayState.Walking;
+        this._localPos.set(-0.95, 1.55 + this._eyeHeight, -1.2);
+        this._targetPitch = 0;
+
+        if (this._crosshair) this._crosshair.style.display = "block";
+        if (this._repairHUD) this._repairHUD.style.display = "none";
+        if (this._deckNavBar) this._deckNavBar.style.display = "flex";
+
+        this.showToast("Plank inspection concluded. Free walking active.", "REPAIR FINISHED");
+    }
+
+    // =========================================================================
+    // GAMEPLAY STATE MACHINE: SPYGLASS
+    // =========================================================================
+
+    public enterSpyglassState(): void {
+        this.gameplayState = PlayerGameplayState.Spyglass;
+        this.interactiveObjects.isUsingSpyglass = true;
+        this.audio.startAmbientSea();
+
+        if (this._spyglassOverlay) this._spyglassOverlay.style.opacity = "1";
+        this._camera.fov = 0.32; // 3.5x optical zoom
+
+        this.showToast("🔭 Raised brass Spyglass! Scanning horizon swell for distant ships. Press [F] to lower.", "LOOKOUT SPYGLASS");
+    }
+
+    public exitSpyglassState(): void {
+        this.gameplayState = PlayerGameplayState.Walking;
+        this.interactiveObjects.isUsingSpyglass = false;
+
+        if (this._spyglassOverlay) this._spyglassOverlay.style.opacity = "0";
+        this._camera.fov = 1.05;
+
+        this.showToast("Lowered spyglass.", "LOOKOUT");
+    }
+
+    /**
+     * Unified exit from any interactive state back to free walking
+     */
+    public exitToWalkingState(): void {
+        switch (this.gameplayState) {
+            case PlayerGameplayState.Helm:
+                this.exitHelmState();
+                break;
+            case PlayerGameplayState.CannonAim:
+                this.exitCannonState();
+                break;
+            case PlayerGameplayState.SailAdjust:
+                this.exitSailState();
+                break;
+            case PlayerGameplayState.Repairing:
+                this.exitRepairState();
+                break;
+            case PlayerGameplayState.Spyglass:
+                this.exitSpyglassState();
+                break;
+            default:
+                break;
         }
     }
 
@@ -236,37 +539,27 @@ export class ShipDeckPlayer {
         this._isFirstPerson = !this._isFirstPerson;
 
         if (this._isFirstPerson) {
-            // Save spectator position before returning to deck
             this._spectatorPos.copyFrom(this._camera.position);
             this._spectatorRot.copyFrom(this._camera.rotation);
 
-            // Sync smoothed rotations
             this._targetYaw = this._currentYaw;
             this._targetPitch = this._currentPitch;
             this._mouseDeltaX = 0;
             this._mouseDeltaY = 0;
             this._currentVelocity.set(0, 0, 0);
 
-            // Restore First Person parented to ship
             this._camera.parent = this._pitchNode;
             this._camera.position.set(0, 0, 0);
             this._camera.rotation.set(0, 0, 0);
             if (this._crosshair) this._crosshair.style.display = "block";
             this.showToast("🚢 First-Person Deck View Active. Walk with WASD, look with mouse.", "DECK CAMERA");
         } else {
-            // Unparent camera to allow free spectator flight
             this._camera.parent = null;
             this._camera.position.copyFrom(this._spectatorPos);
             this._camera.rotation.copyFrom(this._spectatorRot);
             if (this._crosshair) this._crosshair.style.display = "none";
             this.showToast("👁️ Spectator Orbit Camera Active. Press [C] to return to Ship Deck.", "SPECTATOR CAMERA");
         }
-    }
-
-    public toggleSpyglass(enable: boolean): void {
-        if (!this._spyglassOverlay) return;
-        this._spyglassOverlay.style.opacity = enable ? "1" : "0";
-        this._camera.fov = enable ? 0.35 : 1.05; // 3x optical zoom
     }
 
     public showToast(text: string, title = "SHIP ACTION"): void {
@@ -286,12 +579,49 @@ export class ShipDeckPlayer {
         }, 3200);
     }
 
+    // =========================================================================
+    // MAIN UPDATE LOOP
+    // =========================================================================
+
     public update(): void {
         if (!this._isFirstPerson) return;
 
-        // Dynamic frame delta time from engine (capped to 40ms to avoid physics exploding)
         const dt = Math.min(0.04, this.engine.getDeltaTime() / 1000 || 0.016);
 
+        // Update active reload timer for cannon
+        if (this.cannonReloadTimer > 0) {
+            this.cannonReloadTimer = Math.max(0, this.cannonReloadTimer - dt);
+        }
+
+        // Branch update based on gameplay state
+        switch (this.gameplayState) {
+            case PlayerGameplayState.Walking:
+                this._updateWalkingState(dt);
+                break;
+            case PlayerGameplayState.Helm:
+                this._updateHelmState(dt);
+                break;
+            case PlayerGameplayState.CannonAim:
+                this._updateCannonAimState(dt);
+                break;
+            case PlayerGameplayState.SailAdjust:
+                this._updateSailAdjustState(dt);
+                break;
+            case PlayerGameplayState.Repairing:
+                this._updateRepairingState(dt);
+                break;
+            case PlayerGameplayState.Spyglass:
+                this._updateSpyglassState(dt);
+                break;
+        }
+
+        // Update player node transforms relative to shipRoot
+        this._playerNode.position.set(this._localPos.x, this._localPos.y, this._localPos.z);
+        this._playerNode.rotation.set(0, this._currentYaw, 0);
+        this._pitchNode.rotation.set(this._currentPitch, 0, 0);
+    }
+
+    private _updateWalkingState(dt: number): void {
         // Process mouse look with responsive exponential smoothing
         const sensitivity = 0.0020;
         this._targetYaw -= this._mouseDeltaX * sensitivity;
@@ -299,129 +629,312 @@ export class ShipDeckPlayer {
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
-        // Clamp target pitch to prevent neck snapping (-83 deg to +83 deg)
         const maxPitch = Math.PI * 0.46;
         this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, -maxPitch, maxPitch);
 
-        // Exponential lerp smoothing: zero mouse lag + zero jitter
         const mouseLerp = 1.0 - Math.exp(-28.0 * dt);
         this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
         this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
 
-        // If at the Helm, A/D steers the ship wheel and rudder instead of normal strafing!
-        if (this.interactiveObjects.isAtHelm) {
-            let steerDir = 0;
-            if (this._keys["a"]) steerDir += 1;
-            if (this._keys["d"]) steerDir -= 1;
+        // Standard FPS Deck Movement
+        let moveForward = 0;
+        let moveRight = 0;
 
-            if (steerDir !== 0) {
-                this.props.rotateHelm(steerDir * dt * 2.5);
-                this.audio.playHelmCreak();
+        if (this._keys["w"] || this._keys["arrowup"]) moveForward += 1;
+        if (this._keys["s"] || this._keys["arrowdown"]) moveForward -= 1;
+        if (this._keys["a"] || this._keys["arrowleft"]) moveRight -= 1;
+        if (this._keys["d"] || this._keys["arrowright"]) moveRight += 1;
 
-                // Rotate the entire ship in the water!
-                const shipRot = this._shipRoot.rotationQuaternion!;
-                const turnQuat = BABYLON.Quaternion.FromEulerAngles(0, steerDir * dt * 0.45, 0);
-                shipRot.multiplyToRef(turnQuat, shipRot);
+        const isMoving = moveForward !== 0 || moveRight !== 0;
+
+        const forward = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
+        const right = new BABYLON.Vector3(Math.cos(this._currentYaw), 0, -Math.sin(this._currentYaw));
+
+        let targetVelocity = BABYLON.Vector3.Zero();
+        if (isMoving) {
+            const moveDir = forward.scale(moveForward).add(right.scale(moveRight)).normalize();
+            targetVelocity = moveDir.scale(this._walkSpeed);
+
+            this._footstepTimer += dt;
+            if (this._footstepTimer > 0.45 && this._isGrounded) {
+                this.audio.playFootstep();
+                this._footstepTimer = 0;
+            }
+
+            this._bobTimer += dt * 10;
+        } else {
+            this._footstepTimer = 0.4;
+        }
+
+        const accelRate = isMoving ? 14.0 : 18.0;
+        const moveLerp = 1.0 - Math.exp(-accelRate * dt);
+        BABYLON.Vector3.LerpToRef(this._currentVelocity, targetVelocity, moveLerp, this._currentVelocity);
+
+        this._localPos.x += this._currentVelocity.x * dt;
+        this._localPos.z += this._currentVelocity.z * dt;
+
+        this._clampToDeckBounds(this._localPos);
+
+        const targetBobWeight = isMoving ? 1.0 : 0.0;
+        this._bobWeight = BABYLON.Scalar.Lerp(this._bobWeight, targetBobWeight, 1.0 - Math.exp(-8.0 * dt));
+
+        // Vertical / Jump Physics
+        const targetDeckHeight = this._getDeckHeight(this._localPos.x, this._localPos.z);
+        const targetEyeY = targetDeckHeight + this._eyeHeight;
+
+        if (!this._isGrounded) {
+            this._verticalVelocity += this._gravity * dt;
+            this._localPos.y += this._verticalVelocity * dt;
+
+            if (this._localPos.y <= targetEyeY) {
+                this._localPos.y = targetEyeY;
+                this._verticalVelocity = 0;
+                this._isGrounded = true;
+                this.audio.playFootstep();
             }
         } else {
-            // Standard FPS Deck Movement
-            let moveForward = 0;
-            let moveRight = 0;
+            const stepLerp = 1.0 - Math.exp(-16.0 * dt);
+            this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, targetEyeY, stepLerp);
+        }
 
-            if (this._keys["w"] || this._keys["arrowup"]) moveForward += 1;
-            if (this._keys["s"] || this._keys["arrowdown"]) moveForward -= 1;
-            if (this._keys["a"] || this._keys["arrowleft"]) moveRight -= 1;
-            if (this._keys["d"] || this._keys["arrowright"]) moveRight += 1;
+        const bobOffset = Math.sin(this._bobTimer) * 0.030 * this._bobWeight;
+        this._localPos.y += bobOffset;
 
-            const isMoving = moveForward !== 0 || moveRight !== 0;
+        // Proximity detection for Interactive Objects
+        const forwardLocal = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
+        const nearest = this.interactiveObjects.updateProximity(this._localPos, forwardLocal);
+        this._updatePromptCardUI(nearest);
+    }
 
-            // Target movement direction in player's smoothed yaw heading
-            const forward = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
-            const right = new BABYLON.Vector3(Math.cos(this._currentYaw), 0, -Math.sin(this._currentYaw));
+    private _updateHelmState(dt: number): void {
+        this._updatePromptCardUI(null);
 
-            let targetVelocity = BABYLON.Vector3.Zero();
-            if (isMoving) {
-                const moveDir = forward.scale(moveForward).add(right.scale(moveRight)).normalize();
-                targetVelocity = moveDir.scale(this._walkSpeed);
+        // A / D steers the rudder and turns the wheel
+        let steerInput = 0;
+        if (this._keys["a"] || this._keys["arrowleft"]) steerInput += 1; // Turn Port (left)
+        if (this._keys["d"] || this._keys["arrowright"]) steerInput -= 1; // Turn Starboard (right)
 
-                // Footstep sounds
-                this._footstepTimer += dt;
-                if (this._footstepTimer > 0.45 && this._isGrounded) {
-                    this.audio.playFootstep();
-                    this._footstepTimer = 0;
-                }
+        // Smooth rudder angle response
+        const targetRudder = steerInput * 32; // degrees
+        this.rudderAngle += (targetRudder - this.rudderAngle) * (1.0 - Math.exp(-6.0 * dt));
 
-                this._bobTimer += dt * 10;
-            } else {
-                this._footstepTimer = 0.4;
-            }
+        if (steerInput !== 0) {
+            this.props.rotateHelm(steerInput * dt * 2.8);
+            this.audio.playHelmCreak();
 
-            // Smooth momentum acceleration & deceleration
-            const accelRate = isMoving ? 14.0 : 18.0;
-            const moveLerp = 1.0 - Math.exp(-accelRate * dt);
-            BABYLON.Vector3.LerpToRef(this._currentVelocity, targetVelocity, moveLerp, this._currentVelocity);
-
-            // Apply horizontal velocity
-            this._localPos.x += this._currentVelocity.x * dt;
-            this._localPos.z += this._currentVelocity.z * dt;
-
-            // Clamp inside ship railings and bulkheads
-            this._clampToDeckBounds(this._localPos);
-
-            // Smooth head bob weight
-            const targetBobWeight = isMoving ? 1.0 : 0.0;
-            this._bobWeight = BABYLON.Scalar.Lerp(this._bobWeight, targetBobWeight, 1.0 - Math.exp(-8.0 * dt));
-
-            // Vertical / Jump Physics
-            const targetDeckHeight = this._getDeckHeight(this._localPos.x, this._localPos.z);
-            const targetEyeY = targetDeckHeight + this._eyeHeight;
-
-            if (!this._isGrounded) {
-                this._verticalVelocity += this._gravity * dt;
-                this._localPos.y += this._verticalVelocity * dt;
-
-                if (this._localPos.y <= targetEyeY) {
-                    this._localPos.y = targetEyeY;
-                    this._verticalVelocity = 0;
-                    this._isGrounded = true;
-                    this.audio.playFootstep();
-                }
-            } else {
-                // Smooth step interpolation for stairs
-                const stepLerp = 1.0 - Math.exp(-16.0 * dt);
-                this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, targetEyeY, stepLerp);
+            // Rotate ship hull in the ocean water via buoyancy
+            const turnRate = 0.38; // rad/s
+            if (this._buoyancy) {
+                this._buoyancy.rotateMeshYaw(this._shipRoot, steerInput * turnRate * dt);
             }
         }
 
-        // Apply Head Bobbing
-        const bobOffset = Math.sin(this._bobTimer) * 0.030 * this._bobWeight;
+        // W / S adjusts ship throttle speed
+        if (this._keys["w"] || this._keys["arrowup"]) {
+            this.shipThrottle = Math.min(14.0, this.shipThrottle + dt * 4.5);
+        }
+        if (this._keys["s"] || this._keys["arrowdown"]) {
+            this.shipThrottle = Math.max(-2.0, this.shipThrottle - dt * 4.5);
+        }
 
-        // Update player node transform relative to shipRoot
-        this._playerNode.position.set(this._localPos.x, this._localPos.y + bobOffset, this._localPos.z);
-        this._playerNode.rotation.set(0, this._currentYaw, 0);
+        // Smooth ship speed inertia
+        this.currentShipSpeed += (this.shipThrottle - this.currentShipSpeed) * (1.0 - Math.exp(-2.5 * dt));
 
-        // Update pitch node
-        this._pitchNode.rotation.set(this._currentPitch, 0, 0);
+        // Physically glide the pirate ship through the ocean waves
+        // In Babylon RHS, bow is along local -Z
+        const forwardLocal = new BABYLON.Vector3(0, 0, -1);
+        const forwardWorld = BABYLON.Vector3.TransformNormal(forwardLocal, this._shipRoot.getWorldMatrix()).normalize();
+        this._shipRoot.position.addInPlace(forwardWorld.scale(this.currentShipSpeed * dt));
 
-        // Calculate facing direction for interaction dot product
-        const forwardLocal = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
+        // Calculate heading in compass degrees
+        const headingDeg = Math.round(((Math.atan2(forwardWorld.x, -forwardWorld.z) * 180) / Math.PI + 360) % 360);
 
-        // Update Proximity to Interactive Objects
-        const nearest = this.interactiveObjects.updateProximity(this._localPos, forwardLocal);
-        this._updatePromptHUD(nearest);
+        // Update Helm HUD elements
+        this._updateHelmHUD(headingDeg);
     }
 
-    private _updatePromptHUD(obj: InteractiveObject | null): void {
-        if (!this._promptContainer || !this._promptKey || !this._promptText || !this._promptSub) return;
+    private _updateCannonAimState(dt: number): void {
+        this._updatePromptCardUI(null);
 
-        if (obj) {
-            this._promptContainer.style.opacity = "1";
-            this._promptContainer.style.transform = "translate(-50%, -50%) scale(1)";
-            this._promptText.textContent = obj.actionPrompt;
-            this._promptSub.textContent = obj.subtitle;
+        // Mouse look controls elevation and traverse
+        const sensitivity = 0.08;
+        this.cannonTraverse -= this._mouseDeltaX * sensitivity;
+        this.cannonElevation -= this._mouseDeltaY * sensitivity;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+
+        // Keys also adjust aim
+        if (this._keys["w"] || this._keys["arrowup"]) this.cannonElevation += dt * 14;
+        if (this._keys["s"] || this._keys["arrowdown"]) this.cannonElevation -= dt * 14;
+        if (this._keys["a"] || this._keys["arrowleft"]) this.cannonTraverse += dt * 16;
+        if (this._keys["d"] || this._keys["arrowright"]) this.cannonTraverse -= dt * 16;
+
+        this.cannonElevation = BABYLON.Scalar.Clamp(this.cannonElevation, -6.0, 22.0);
+        this.cannonTraverse = BABYLON.Scalar.Clamp(this.cannonTraverse, -25.0, 25.0);
+
+        // Base broadside yaw: Starboard is -PI/2, Port is +PI/2
+        const baseBroadsideYaw = this.isStarboardCannon ? -Math.PI / 2 : Math.PI / 2;
+        const targetYaw = baseBroadsideYaw + (this.cannonTraverse * Math.PI) / 180;
+        const targetPitch = (-this.cannonElevation * Math.PI) / 180;
+
+        // Handle firing recoil kick
+        let recoilPitch = 0;
+        if (this._cannonRecoilTime > 0) {
+            this._cannonRecoilTime -= dt;
+            recoilPitch = Math.sin((this._cannonRecoilTime / 0.35) * Math.PI) * 0.08;
+        }
+
+        const aimLerp = 1.0 - Math.exp(-24.0 * dt);
+        this._currentYaw += (targetYaw - this._currentYaw) * aimLerp;
+        this._currentPitch += (targetPitch + recoilPitch - this._currentPitch) * aimLerp;
+
+        this._updateCannonHUD();
+    }
+
+    private _updateSailAdjustState(dt: number): void {
+        this._updatePromptCardUI(null);
+
+        // W hoists / trims canvas, S reefs / furls canvas
+        if (this._keys["w"] || this._keys["arrowup"]) {
+            this.sailTrimPercent = Math.min(100, this.sailTrimPercent + dt * 25);
+            this.props.setSailTrim(this.sailTrimPercent / 100);
+            this.audio.playSailFlutter();
+        }
+        if (this._keys["s"] || this._keys["arrowdown"]) {
+            this.sailTrimPercent = Math.max(25, this.sailTrimPercent - dt * 25);
+            this.props.setSailTrim(this.sailTrimPercent / 100);
+        }
+
+        this._updateSailHUD();
+    }
+
+    private _updateRepairingState(_dt: number): void {
+        this._updatePromptCardUI(null);
+        this._updateRepairHUD();
+    }
+
+    private _updateSpyglassState(dt: number): void {
+        this._updatePromptCardUI(null);
+
+        // Smooth telescope look with optical dampening
+        const sensitivity = 0.0009;
+        this._targetYaw -= this._mouseDeltaX * sensitivity;
+        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+
+        const maxPitch = Math.PI * 0.40;
+        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, -maxPitch, maxPitch);
+
+        const mouseLerp = 1.0 - Math.exp(-22.0 * dt);
+        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
+        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+    }
+
+    // =========================================================================
+    // HUD & PROMPT CARD UI RENDERING
+    // =========================================================================
+
+    private _updatePromptCardUI(obj: InteractiveObject | null): void {
+        if (!this._cardContainer || !this._cardTitle || !this._cardAction || !this._cardSub) return;
+
+        if (obj && this.gameplayState === PlayerGameplayState.Walking) {
+            this._cardTitle.textContent = obj.cardTitle;
+            this._cardAction.textContent = obj.actionPrompt;
+            this._cardSub.textContent = obj.subtitle;
+
+            this._cardContainer.style.opacity = "1";
+            this._cardContainer.style.transform = "translate(-50%, -50%) scale(1)";
+            this._cardContainer.style.pointerEvents = "auto";
         } else {
-            this._promptContainer.style.opacity = "0";
-            this._promptContainer.style.transform = "translate(-50%, -50%) scale(0.92)";
+            this._cardContainer.style.opacity = "0";
+            this._cardContainer.style.transform = "translate(-50%, -50%) scale(0.92)";
+            this._cardContainer.style.pointerEvents = "none";
+        }
+    }
+
+    private _updateHelmHUD(headingDeg: number): void {
+        if (!this._helmHUD) return;
+
+        const compassEl = this._helmHUD.querySelector("#helm-heading-text");
+        if (compassEl) {
+            const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+            const dirIdx = Math.round(headingDeg / 22.5) % 16;
+            compassEl.textContent = `${String(headingDeg).padStart(3, '0')}° ${dirs[dirIdx]} • AHEAD`;
+        }
+
+        const rudderEl = this._helmHUD.querySelector("#helm-rudder-text");
+        if (rudderEl) {
+            const side = this.rudderAngle > 1 ? "PORT" : this.rudderAngle < -1 ? "STARBOARD" : "MIDSHIPS";
+            const deg = Math.abs(Math.round(this.rudderAngle));
+            rudderEl.textContent = side === "MIDSHIPS" ? "0° MIDSHIPS" : `${deg}° ${side}`;
+        }
+
+        const needleEl = this._helmHUD.querySelector("#helm-rudder-needle") as HTMLElement;
+        if (needleEl) {
+            const pct = 50 + (this.rudderAngle / 32) * 45;
+            needleEl.style.left = `${pct}%`;
+        }
+
+        const speedEl = this._helmHUD.querySelector("#helm-speed-text");
+        if (speedEl) {
+            speedEl.textContent = `${this.currentShipSpeed.toFixed(1)} KTS`;
+        }
+    }
+
+    private _updateCannonHUD(): void {
+        if (!this._cannonHUD) return;
+
+        const elevEl = this._cannonHUD.querySelector("#cannon-elev-text");
+        if (elevEl) {
+            const sign = this.cannonElevation >= 0 ? "+" : "";
+            elevEl.textContent = `${sign}${this.cannonElevation.toFixed(1)}°`;
+        }
+
+        const travEl = this._cannonHUD.querySelector("#cannon-trav-text");
+        if (travEl) {
+            const sign = this.cannonTraverse >= 0 ? "+" : "";
+            travEl.textContent = `${sign}${this.cannonTraverse.toFixed(1)}°`;
+        }
+
+        const statusEl = this._cannonHUD.querySelector("#cannon-status-text");
+        const barEl = this._cannonHUD.querySelector("#cannon-reload-bar") as HTMLElement;
+
+        if (statusEl && barEl) {
+            if (this.cannonReloadTimer <= 0) {
+                statusEl.textContent = "READY TO FIRE";
+                statusEl.className = "cannon-status ready";
+                barEl.style.width = "100%";
+            } else {
+                statusEl.textContent = `RELOADING... [${this.cannonReloadTimer.toFixed(1)}s]`;
+                statusEl.className = "cannon-status reloading";
+                const p = 1.0 - this.cannonReloadTimer / 2.4;
+                barEl.style.width = `${Math.round(p * 100)}%`;
+            }
+        }
+    }
+
+    private _updateSailHUD(): void {
+        if (!this._sailHUD) return;
+
+        const trimEl = this._sailHUD.querySelector("#sail-trim-text");
+        const barEl = this._sailHUD.querySelector("#sail-trim-fill") as HTMLElement;
+        if (trimEl && barEl) {
+            const roundPct = Math.round(this.sailTrimPercent);
+            trimEl.textContent = `${roundPct}% HOISTED`;
+            barEl.style.width = `${roundPct}%`;
+        }
+    }
+
+    private _updateRepairHUD(): void {
+        if (!this._repairHUD) return;
+
+        const intEl = this._repairHUD.querySelector("#repair-pct-text");
+        const barEl = this._repairHUD.querySelector("#repair-bar-fill") as HTMLElement;
+        if (intEl && barEl) {
+            const pct = Math.round(this.props.repairProgress * 100);
+            intEl.textContent = `${pct}% INTEGRITY`;
+            barEl.style.width = `${pct}%`;
         }
     }
 
@@ -436,23 +949,45 @@ export class ShipDeckPlayer {
         document.body.appendChild(crosshair);
         this._crosshair = crosshair;
 
-        // 2. Interactive Prompt Card (Center-Bottom)
-        const prompt = document.createElement("div");
-        prompt.id = "ship-prompt-card";
-        prompt.innerHTML = `
-            <div class="prompt-badge">
-                <span class="prompt-key">F</span>
-            </div>
-            <div class="prompt-info">
-                <div class="prompt-action" id="prompt-action-text">Interact</div>
-                <div class="prompt-subtitle" id="prompt-sub-text">Press F to interact</div>
+        // 2. Exact Card Box matching user's ASCII diagram:
+        // ┌──────────────────────┐
+        // │       CANNON         │
+        // │                      │
+        // │      Press F         │
+        // │     Use Cannon       │
+        // └──────────────────────┘
+        const cardBox = document.createElement("div");
+        cardBox.id = "ship-interaction-card";
+        cardBox.innerHTML = `
+            <div class="card-ascii-box">
+                <div class="card-corner-tag c-tl">┌</div>
+                <div class="card-border-line-top"></div>
+                <div class="card-corner-tag c-tr">┐</div>
+
+                <div class="card-body-content">
+                    <div class="card-headline-title" id="interact-card-title">CANNON</div>
+                    
+                    <div class="card-ornament-sep"></div>
+
+                    <div class="card-press-key-row">
+                        <span class="card-key-cap">F</span>
+                        <span class="card-press-label">Press F</span>
+                    </div>
+
+                    <div class="card-action-verb" id="interact-card-action">Use Cannon</div>
+                    <div class="card-action-sub" id="interact-card-sub">Aim naval broadside & fire</div>
+                </div>
+
+                <div class="card-corner-tag c-bl">└</div>
+                <div class="card-border-line-bottom"></div>
+                <div class="card-corner-tag c-br">┘</div>
             </div>
         `;
-        document.body.appendChild(prompt);
-        this._promptContainer = prompt;
-        this._promptKey = prompt.querySelector(".prompt-key");
-        this._promptText = prompt.querySelector("#prompt-action-text");
-        this._promptSub = prompt.querySelector("#prompt-sub-text");
+        document.body.appendChild(cardBox);
+        this._cardContainer = cardBox;
+        this._cardTitle = cardBox.querySelector("#interact-card-title");
+        this._cardAction = cardBox.querySelector("#interact-card-action");
+        this._cardSub = cardBox.querySelector("#interact-card-sub");
 
         // 3. Spyglass Vignette Overlay
         const spyglass = document.createElement("div");
@@ -471,17 +1006,17 @@ export class ShipDeckPlayer {
         embark.id = "embark-overlay";
         embark.innerHTML = `
             <div class="embark-card">
-                <div class="embark-badge">⚓ PIRATE ADVENTURE</div>
+                <div class="embark-badge">⚓ PIRATE SHIP SIMULATOR</div>
                 <h2 class="embark-title">EMBARK ON THE SHIP</h2>
-                <p class="embark-desc">Step aboard the pirate deck, explore the vessel, and take command of the helm, cannons, and sails.</p>
+                <p class="embark-desc">Step aboard the pirate vessel deck. Approach interactive ship objects, press <strong>[F]</strong> to enter dedicated gameplay stations: steer at the Helm, aim & fire Broadside Cannons, trim canvas Sails, and repair damaged hull timbers.</p>
                 <div class="embark-keys">
-                    <span class="key-pill"><strong>WASD</strong> Walk</span>
-                    <span class="key-pill"><strong>Mouse</strong> Look</span>
-                    <span class="key-pill"><strong>Space</strong> Jump</span>
-                    <span class="key-pill"><strong>F</strong> Interact</span>
-                    <span class="key-pill"><strong>C</strong> Camera</span>
+                    <span class="key-pill"><strong>WASD</strong> Walk Deck</span>
+                    <span class="key-pill"><strong>Mouse</strong> Look Around</span>
+                    <span class="key-pill"><strong>F</strong> Interact Station</span>
+                    <span class="key-pill"><strong>Space</strong> Jump / Fire</span>
+                    <span class="key-pill"><strong>C</strong> Camera Mode</span>
                 </div>
-                <button class="embark-btn">ENTER SHIP DECK</button>
+                <button class="embark-btn">TAKE COMMAND OF DECK</button>
             </div>
         `;
         document.body.appendChild(embark);
@@ -492,15 +1027,134 @@ export class ShipDeckPlayer {
             this._canvas.requestPointerLock();
         });
 
-        // 6. Deck Status Compass Bar at Bottom Left
+        // 6. Bottom Navigation Controls Bar
         const deckBar = document.createElement("div");
         deckBar.id = "deck-nav-bar";
         deckBar.innerHTML = `
             <div class="nav-item"><span class="nav-key">[WASD]</span> Walk Deck</div>
-            <div class="nav-item"><span class="nav-key">[F]</span> Interact</div>
+            <div class="nav-item"><span class="nav-key">[F]</span> Interact Station</div>
             <div class="nav-item"><span class="nav-key">[Space]</span> Jump</div>
-            <div class="nav-item"><span class="nav-key">[C]</span> Switch Camera</div>
+            <div class="nav-item"><span class="nav-key">[C]</span> Orbit Camera</div>
         `;
         document.body.appendChild(deckBar);
+        this._deckNavBar = deckBar;
+
+        // 7. Dedicated HELM HUD
+        const helmHUD = document.createElement("div");
+        helmHUD.id = "helm-hud";
+        helmHUD.innerHTML = `
+            <div class="helm-compass-banner">
+                <div class="compass-icon">🧭</div>
+                <div class="compass-heading" id="helm-heading-text">045° NE • AHEAD</div>
+            </div>
+            <div class="helm-controls-panel">
+                <div class="helm-gauge-row">
+                    <span class="gauge-label">RUDDER ANGLE</span>
+                    <div class="rudder-track">
+                        <div class="rudder-needle" id="helm-rudder-needle"></div>
+                        <span class="rudder-marker port">PORT ◄ [A]</span>
+                        <span class="rudder-marker stbd">[D] ► STBD</span>
+                    </div>
+                    <span class="gauge-val" id="helm-rudder-text">0° MIDSHIPS</span>
+                </div>
+                <div class="helm-gauge-row">
+                    <span class="gauge-label">THROTTLE SPEED</span>
+                    <span class="gauge-val highlight" id="helm-speed-text">6.0 KTS</span>
+                    <span class="gauge-hint">[W] Ahead / [S] Astern</span>
+                </div>
+                <div class="helm-exit-prompt">
+                    <span class="exit-key-cap">F</span>
+                    <span>Press [F] or [ESC] to Release Wheel</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(helmHUD);
+        this._helmHUD = helmHUD;
+
+        // 8. Dedicated CANNON AIM HUD
+        const cannonHUD = document.createElement("div");
+        cannonHUD.id = "cannon-hud";
+        cannonHUD.innerHTML = `
+            <div class="cannon-reticle">
+                <div class="reticle-circle"></div>
+                <div class="reticle-cross h"></div>
+                <div class="reticle-cross v"></div>
+                <div class="reticle-ticks">
+                    <span class="tick t1"></span>
+                    <span class="tick t2"></span>
+                    <span class="tick t3"></span>
+                </div>
+            </div>
+            <div class="cannon-aim-panel">
+                <div class="aim-badge">🎯 NAVAL BROADSIDE SIGHTS</div>
+                <div class="aim-readouts">
+                    <div class="readout-item">
+                        <span class="ro-label">ELEVATION</span>
+                        <span class="ro-val" id="cannon-elev-text">+4.0°</span>
+                    </div>
+                    <div class="readout-item">
+                        <span class="ro-label">TRAVERSE</span>
+                        <span class="ro-val" id="cannon-trav-text">0.0°</span>
+                    </div>
+                </div>
+                <div class="cannon-status-box">
+                    <div class="cannon-status ready" id="cannon-status-text">READY TO FIRE</div>
+                    <div class="reload-track"><div class="reload-bar" id="cannon-reload-bar" style="width: 100%;"></div></div>
+                </div>
+                <div class="cannon-hints">
+                    <span class="hint-pill"><strong>Mouse / WASD</strong> Aim Cannon</span>
+                    <span class="hint-pill fire"><strong>Left-Click / Space</strong> FIRE!</span>
+                    <span class="hint-pill exit"><strong>F / ESC</strong> Exit</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(cannonHUD);
+        this._cannonHUD = cannonHUD;
+
+        // 9. Dedicated SAIL HUD
+        const sailHUD = document.createElement("div");
+        sailHUD.id = "sail-hud";
+        sailHUD.innerHTML = `
+            <div class="sail-rigging-panel">
+                <div class="sail-badge">⛵ MAIN MAST RIGGING</div>
+                <div class="sail-trim-row">
+                    <span class="sail-label">CANVAS TRIM</span>
+                    <div class="sail-track"><div class="sail-fill" id="sail-trim-fill" style="width: 85%;"></div></div>
+                    <span class="sail-val" id="sail-trim-text">85% HOISTED</span>
+                </div>
+                <div class="sail-metrics">
+                    <div class="metric-item"><span class="m-lbl">WIND SPEED</span><span class="m-val">18 KTS ENE</span></div>
+                    <div class="metric-item"><span class="m-lbl">CATCH EFFICIENCY</span><span class="m-val">94%</span></div>
+                </div>
+                <div class="sail-hints">
+                    <span class="hint-pill"><strong>[W]</strong> Hoist Canvas (Billow)</span>
+                    <span class="hint-pill"><strong>[S]</strong> Reef Canvas (Furl)</span>
+                    <span class="hint-pill exit"><strong>[F / ESC]</strong> Exit Rigging</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(sailHUD);
+        this._sailHUD = sailHUD;
+
+        // 10. Dedicated REPAIR HUD
+        const repairHUD = document.createElement("div");
+        repairHUD.id = "repair-hud";
+        repairHUD.innerHTML = `
+            <div class="repair-deck-panel">
+                <div class="repair-badge">🔨 SHIPWRIGHT REPAIR</div>
+                <div class="repair-integrity-row">
+                    <span class="repair-label">HULL INTEGRITY</span>
+                    <div class="repair-track"><div class="repair-fill" id="repair-bar-fill" style="width: 65%;"></div></div>
+                    <span class="repair-val" id="repair-pct-text">65% INTEGRITY</span>
+                </div>
+                <div class="repair-status-text">DAMAGED OAK TIMBER • WATER SEEPAGE DETECTED</div>
+                <div class="repair-hints">
+                    <span class="hint-pill hammer"><strong>Left-Click / Space</strong> Hammer Nails</span>
+                    <span class="hint-pill exit"><strong>[F / ESC]</strong> Exit Repair</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(repairHUD);
+        this._repairHUD = repairHUD;
     }
 }
