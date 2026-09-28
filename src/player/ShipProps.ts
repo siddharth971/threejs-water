@@ -26,9 +26,22 @@ export class ShipProps {
     private _cannonSmokeSystem: BABYLON.ParticleSystem | null = null;
     private _cannonFireSystem: BABYLON.ParticleSystem | null = null;
 
-    // Sails Reference
+    // Sails Reference & Wind Wave Simulation
     public sailsMesh: BABYLON.Mesh | null = null;
+    public baseSailScaling: BABYLON.Vector3 | null = null;
+    public baseSailPosition: BABYLON.Vector3 | null = null;
+    public tiesMesh: BABYLON.Mesh | null = null;
+    public baseTiesScaling: BABYLON.Vector3 | null = null;
+    public baseTiesPosition: BABYLON.Vector3 | null = null;
     public isSailsTrimmed = false;
+
+    // Wind wave air animation properties
+    public windWaveEnabled = true;
+    public windWaveSpeed = 2.6;
+    public windWaveIntensity = 0.12;
+    private _windTime = 0;
+    private _baseSailPositions: Float32Array | null = null;
+    private _animatedSailPositions: Float32Array | null = null;
 
     // Helm Reference
     public helmWheelMesh: BABYLON.TransformNode | null = null;
@@ -44,6 +57,11 @@ export class ShipProps {
         this._buildRepairPoint();
         this._buildShipEdgeMarker();
         this._setupCannonFX();
+
+        // Animate wind waving on sail canvas
+        this._scene.onBeforeRenderObservable.add(() => {
+            this._updateSailWindWave();
+        });
     }
 
     private _findExistingShipMeshes(): void {
@@ -55,6 +73,23 @@ export class ShipProps {
         const sails = this._scene.getMeshByName("Sails");
         if (sails) {
             this.sailsMesh = sails as BABYLON.Mesh;
+            this.baseSailScaling = sails.scaling.clone();
+            this.baseSailPosition = sails.position.clone();
+
+            // Setup dynamic updatable vertex buffer for wind waving air simulation
+            const positions = this.sailsMesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            if (positions) {
+                this._baseSailPositions = new Float32Array(positions);
+                this._animatedSailPositions = new Float32Array(positions);
+                this.sailsMesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, this._animatedSailPositions, true);
+            }
+        }
+
+        const ties = this._scene.getMeshByName("Ties");
+        if (ties) {
+            this.tiesMesh = ties as BABYLON.Mesh;
+            this.baseTiesScaling = ties.scaling.clone();
+            this.baseTiesPosition = ties.position.clone();
         }
 
         const cannons = this._scene.getMeshByName("Cannons") || this._scene.getTransformNodeByName("Cannons");
@@ -62,6 +97,10 @@ export class ShipProps {
             this.portCannonMesh = cannons;
             this.starboardCannonMesh = cannons;
         }
+
+        // Apply top sail elevation so sea view is completely open, and taller sail scale
+        this.setSailHeight(1.30);
+        this.setSailElevation(1.10);
     }
 
     /**
@@ -603,13 +642,37 @@ export class ShipProps {
     }
 
     /**
+     * Dynamically adjusts sail height scale
+     */
+    public setSailHeight(multiplier: number): void {
+        if (!this.sailsMesh || !this.baseSailScaling) return;
+        this.sailsMesh.scaling.z = this.baseSailScaling.z * multiplier;
+        this.sailsMesh.scaling.y = this.baseSailScaling.y * (1 + (multiplier - 1) * 0.4);
+        if (this.tiesMesh && this.baseTiesScaling) {
+            this.tiesMesh.scaling.z = this.baseTiesScaling.z * multiplier;
+        }
+    }
+
+    /**
+     * Dynamically adjusts vertical sail elevation up the mast
+     */
+    public setSailElevation(offset: number): void {
+        if (!this.sailsMesh || !this.baseSailPosition) return;
+        this.sailsMesh.position.y = this.baseSailPosition.y + offset;
+        if (this.tiesMesh && this.baseTiesPosition) {
+            this.tiesMesh.position.y = this.baseTiesPosition.y + offset;
+        }
+    }
+
+    /**
      * Toggles sail trim / billow
      */
     public toggleSails(): boolean {
         this.isSailsTrimmed = !this.isSailsTrimmed;
-        if (this.sailsMesh) {
-            // Billow animation / scaling
-            const targetScaleY = this.isSailsTrimmed ? 1.08 : 0.96;
+        this.windWaveIntensity = this.isSailsTrimmed ? 0.16 : 0.10;
+        if (this.sailsMesh && this.baseSailScaling) {
+            const billow = this.isSailsTrimmed ? 1.15 : 1.0;
+            const targetScaleY = this.baseSailScaling.y * billow;
             const startScaleY = this.sailsMesh.scaling.y;
             let p = 0;
             const sailObserver = this._scene.onBeforeRenderObservable.add(() => {
@@ -622,6 +685,40 @@ export class ShipProps {
             });
         }
         return this.isSailsTrimmed;
+    }
+
+    /**
+     * Updates dynamic wind wave air ripples across the sail canvas
+     */
+    private _updateSailWindWave(): void {
+        if (!this.windWaveEnabled || !this.sailsMesh || !this._baseSailPositions || !this._animatedSailPositions) return;
+
+        const dt = 0.016;
+        this._windTime += dt * this.windWaveSpeed;
+        const t = this._windTime;
+        const amp = this.windWaveIntensity;
+
+        const base = this._baseSailPositions;
+        const anim = this._animatedSailPositions;
+        const len = base.length;
+
+        for (let i = 0; i < len; i += 3) {
+            const x = base[i];
+            const y = base[i + 1];
+            const z = base[i + 2];
+
+            // Harmonic wind ripples across fabric:
+            // Primary wind wave + high-frequency flutter + deep breathing billow
+            const wave = Math.sin(x * 2.6 + t * 1.8 + z * 1.4) * Math.cos(z * 1.6 + t * 1.2) * amp
+                       + Math.sin(x * 5.2 + t * 3.4) * (amp * 0.35)
+                       + Math.sin(t * 0.9) * (amp * 0.45);
+
+            anim[i] = x;
+            anim[i + 1] = y + wave;
+            anim[i + 2] = z;
+        }
+
+        this.sailsMesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, anim, false, false);
     }
 
     /**

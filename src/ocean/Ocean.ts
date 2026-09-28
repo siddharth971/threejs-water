@@ -39,6 +39,10 @@ export class Ocean {
     private _forceUpdateGlowIntensity: boolean;
     private _canvas: HTMLCanvasElement = null as any;
     private _player: ShipDeckPlayer | null = null;
+    private _sailHeight = 1.30;
+    private _sailElevation = 0.50;
+    private _windWaveSpeed = 2.6;
+    private _windWaveIntensity = 0.12;
 
     public get player(): ShipDeckPlayer | null {
         return this._player;
@@ -439,6 +443,10 @@ export class Ocean {
 
             // Initialize First-Person Player on the Pirate Ship Deck
             this._player = new ShipDeckPlayer(this._scene, this._engine, this._canvas, shipRoot, this._camera);
+            this._player.props.setSailHeight(this._sailHeight);
+            this._player.props.setSailElevation(this._sailElevation);
+            this._player.props.windWaveSpeed = this._windWaveSpeed;
+            this._player.props.windWaveIntensity = this._windWaveIntensity;
         }
     }
 
@@ -524,6 +532,14 @@ export class Ocean {
                 return this._lightDirection.y;
             case "skybox_directionZ":
                 return this._lightDirection.z;
+            case "ship_sailHeight":
+                return this._sailHeight;
+            case "ship_sailElevation":
+                return this._sailElevation;
+            case "ship_windWaveSpeed":
+                return this._windWaveSpeed;
+            case "ship_windWaveIntensity":
+                return this._windWaveIntensity;
         }
 
         if (name.startsWith("procSky_")) {
@@ -627,6 +643,22 @@ export class Ocean {
             case "skybox_directionZ":
                 this._lightDirection.z = parseFloat(value);
                 this._light.direction = this._lightDirection.normalizeToNew();
+                break;
+            case "ship_sailHeight":
+                this._sailHeight = parseFloat(value);
+                this._player?.props.setSailHeight(this._sailHeight);
+                break;
+            case "ship_sailElevation":
+                this._sailElevation = parseFloat(value);
+                this._player?.props.setSailElevation(this._sailElevation);
+                break;
+            case "ship_windWaveSpeed":
+                this._windWaveSpeed = parseFloat(value);
+                if (this._player) this._player.props.windWaveSpeed = this._windWaveSpeed;
+                break;
+            case "ship_windWaveIntensity":
+                this._windWaveIntensity = parseFloat(value);
+                if (this._player) this._player.props.windWaveIntensity = this._windWaveIntensity;
                 break;
         }
 

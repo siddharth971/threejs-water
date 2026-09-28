@@ -80,6 +80,7 @@ export class OceanGUI {
         this._makeMenuOceanGeometry();
         this._makeMenuOceanShader();
         this._makeMenuBuoyancy();
+        this._makeMenuShip();
     }
 
     private _makeMenuPresets(): void {
@@ -101,6 +102,7 @@ export class OceanGUI {
     public saveCurrentSettings(): void {
         const paramKeys = [
             "size", "envIntensity", "lightIntensity", "enableShadows", "enableGlow", "useZQSD", "showDebugRTT",
+            "ship_sailHeight", "ship_sailElevation", "ship_windWaveSpeed", "ship_windWaveIntensity",
             "procSky_inclination", "procSky_azimuth", "procSky_luminance", "procSky_turbidity", "procSky_rayleigh", "procSky_mieCoefficient", "procSky_mieDirectionalG",
             "skybox_lightColor", "skybox_directionX", "skybox_directionY", "skybox_directionZ",
             "waves_g", "waves_depth", "waves_lambda",
@@ -440,5 +442,21 @@ export class OceanGUI {
         this._addCheckbox(buoyancy, params, "buoy_enabled", "Enabled");
         this._addSlider(buoyancy, params, "buoy_attenuation", "Damping factor", 0, 1, 0.001);
         this._addSlider(buoyancy, params, "buoy_numSteps", "Num steps", 1, 20, 1);
+    }
+
+    private _makeMenuShip(): void {
+        const params = {
+            ship_sailHeight: this._paramRead("ship_sailHeight"),
+            ship_sailElevation: this._paramRead("ship_sailElevation"),
+            ship_windWaveSpeed: this._paramRead("ship_windWaveSpeed"),
+            ship_windWaveIntensity: this._paramRead("ship_windWaveIntensity"),
+        };
+
+        const shipFolder = this._gui.addFolder("⛵ Pirate Ship & Sails");
+        this._addSlider(shipFolder, params, "ship_sailHeight", "Sail Height", 0.5, 3.0, 0.05);
+        this._addSlider(shipFolder, params, "ship_sailElevation", "Sail Elevation", 0.0, 2.0, 0.05);
+        this._addSlider(shipFolder, params, "ship_windWaveSpeed", "Wind Wave Speed", 0.5, 6.0, 0.1);
+        this._addSlider(shipFolder, params, "ship_windWaveIntensity", "Wind Wave Ripple", 0.0, 0.35, 0.01);
+        shipFolder.open();
     }
 }
