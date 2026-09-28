@@ -206,6 +206,9 @@ export class Ocean {
             this._wavesGenerator!.update();
             this._buoyancy.setWaterHeightMap(this._wavesGenerator!.waterHeightMap, this._wavesGenerator!.waterHeightMapScale);
             this._buoyancy.update();
+            if (this._player) {
+                this._player.update();
+            }
         });
 
         return new Promise((resolve) => {

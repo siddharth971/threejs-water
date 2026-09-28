@@ -13,7 +13,7 @@ export enum PlayerGameplayState {
 }
 
 export class ShipDeckPlayer {
-    private _scene: BABYLON.Scene;
+    public scene: BABYLON.Scene;
     public engine: BABYLON.Engine;
     private _canvas: HTMLCanvasElement;
     private _shipRoot: BABYLON.TransformNode;
@@ -106,7 +106,7 @@ export class ShipDeckPlayer {
         camera: BABYLON.FreeCamera,
         buoyancy?: Buoyancy
     ) {
-        this._scene = scene;
+        this.scene = scene;
         this.engine = engine;
         this._canvas = canvas;
         this._shipRoot = shipRoot;
@@ -140,11 +140,6 @@ export class ShipDeckPlayer {
 
         // Register Inputs
         this._registerEventListeners();
-
-        // Update loop
-        this._scene.onBeforeRenderObservable.add(() => {
-            this.update();
-        });
     }
 
     private _setupCamera(): void {
@@ -154,6 +149,8 @@ export class ShipDeckPlayer {
         this._camera.rotation.set(0, 0, 0);
         this._camera.minZ = 0.05;
         this._camera.fov = 1.05;
+        this._camera.inertia = 0;
+        (this._camera as any).angularSensibility = 0;
     }
 
     private _getDeckHeight(_x: number, z: number): number {
@@ -240,7 +237,14 @@ export class ShipDeckPlayer {
         this._canvas.addEventListener("click", () => {
             this.audio.init();
             if (!this._isPointerLocked) {
-                this._canvas.requestPointerLock();
+                try {
+                    const promise = (this._canvas as any).requestPointerLock({ unadjustedMovement: true });
+                    if (promise && promise.catch) {
+                        promise.catch(() => this._canvas.requestPointerLock());
+                    }
+                } catch {
+                    this._canvas.requestPointerLock();
+                }
             }
         });
 
@@ -618,22 +622,22 @@ export class ShipDeckPlayer {
         this._playerNode.position.set(this._localPos.x, this._localPos.y, this._localPos.z);
         this._playerNode.rotation.set(0, this._currentYaw, 0);
         this._pitchNode.rotation.set(this._currentPitch, 0, 0);
+        this._playerNode.computeWorldMatrix(true);
+        this._pitchNode.computeWorldMatrix(true);
     }
 
     private _updateWalkingState(dt: number): void {
-        // Process mouse look with responsive exponential smoothing
-        const sensitivity = 0.0020;
-        this._targetYaw -= this._mouseDeltaX * sensitivity;
-        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        // Direct 1:1 responsive mouse look (zero lag, instant precision)
+        const sensitivity = 0.0022;
+        this._currentYaw -= this._mouseDeltaX * sensitivity;
+        this._currentPitch -= this._mouseDeltaY * sensitivity;
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
         const maxPitch = Math.PI * 0.46;
-        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, -maxPitch, maxPitch);
-
-        const mouseLerp = 1.0 - Math.exp(-28.0 * dt);
-        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
-        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+        this._currentPitch = BABYLON.Scalar.Clamp(this._currentPitch, -maxPitch, maxPitch);
+        this._targetYaw = this._currentYaw;
+        this._targetPitch = this._currentPitch;
 
         // Standard FPS Deck Movement
         let moveForward = 0;
@@ -708,23 +712,21 @@ export class ShipDeckPlayer {
     private _updateHelmState(dt: number): void {
         this._updatePromptCardUI(null);
 
-        // Free mouse look while captaining the ship (no more fixed staring!)
-        const sensitivity = 0.0020;
-        this._targetYaw -= this._mouseDeltaX * sensitivity;
-        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        // Direct 1:1 mouse look while captaining the helm (zero lag)
+        const sensitivity = 0.0022;
+        this._currentYaw -= this._mouseDeltaX * sensitivity;
+        this._currentPitch -= this._mouseDeltaY * sensitivity;
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
-        // Clamp view so captain stays facing forward with generous freedom (±80 deg yaw, ±40 deg pitch)
+        // Clamp view so captain stays facing forward (±80 deg yaw, -38 deg to +45 deg pitch)
         const maxTurn = (80.0 * Math.PI) / 180;
         const minPitch = (-38.0 * Math.PI) / 180;
         const maxPitch = (45.0 * Math.PI) / 180;
-        this._targetYaw = BABYLON.Scalar.Clamp(this._targetYaw, -maxTurn, maxTurn);
-        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, minPitch, maxPitch);
-
-        const mouseLerp = 1.0 - Math.exp(-24.0 * dt);
-        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
-        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+        this._currentYaw = BABYLON.Scalar.Clamp(this._currentYaw, -maxTurn, maxTurn);
+        this._currentPitch = BABYLON.Scalar.Clamp(this._currentPitch, minPitch, maxPitch);
+        this._targetYaw = this._currentYaw;
+        this._targetPitch = this._currentPitch;
 
         // A / D steers the rudder and turns the wheel:
         // [A] = Port (left), [D] = Starboard (right)
@@ -780,7 +782,8 @@ export class ShipDeckPlayer {
         // Moving mouse DOWN -> tilts aim DOWN
         // Moving mouse LEFT -> traverses aim LEFT
         // Moving mouse RIGHT -> traverses aim RIGHT
-        const mouseSensitivity = 0.0020;
+        // Direct 1:1 Cannon aim look
+        const mouseSensitivity = 0.0022;
         const baseBroadsideYaw = this.isStarboardCannon ? -Math.PI / 2 : Math.PI / 2;
 
         this._targetYaw -= this._mouseDeltaX * mouseSensitivity;
@@ -790,12 +793,12 @@ export class ShipDeckPlayer {
 
         // Keys also adjust aim smoothly:
         // W = pitch up, S = pitch down
-        if (this._keys["w"] || this._keys["arrowup"]) this._targetPitch += dt * 0.45;
-        if (this._keys["s"] || this._keys["arrowdown"]) this._targetPitch -= dt * 0.45;
+        if (this._keys["w"] || this._keys["arrowup"]) this._targetPitch += dt * 0.55;
+        if (this._keys["s"] || this._keys["arrowdown"]) this._targetPitch -= dt * 0.55;
 
         // A = traverse left, D = traverse right (relative to camera facing out the gunport)
-        if (this._keys["a"] || this._keys["arrowleft"]) this._targetYaw += dt * 0.55;
-        if (this._keys["d"] || this._keys["arrowright"]) this._targetYaw -= dt * 0.55;
+        if (this._keys["a"] || this._keys["arrowleft"]) this._targetYaw += dt * 0.65;
+        if (this._keys["d"] || this._keys["arrowright"]) this._targetYaw -= dt * 0.65;
 
         // Clamp elevation: -8 deg (down towards sea) to +26 deg (up towards rigging/sky)
         const minPitch = (-8.0 * Math.PI) / 180;
@@ -806,9 +809,7 @@ export class ShipDeckPlayer {
         const maxTraverse = (28.0 * Math.PI) / 180;
         this._targetYaw = BABYLON.Scalar.Clamp(this._targetYaw, baseBroadsideYaw - maxTraverse, baseBroadsideYaw + maxTraverse);
 
-        // Exponential smoothing for buttery smooth aiming
-        const aimLerp = 1.0 - Math.exp(-24.0 * dt);
-        this._currentYaw += (this._targetYaw - this._currentYaw) * aimLerp;
+        this._currentYaw = this._targetYaw;
 
         // Handle firing recoil kick
         let recoilPitch = 0;
@@ -816,7 +817,7 @@ export class ShipDeckPlayer {
             this._cannonRecoilTime -= dt;
             recoilPitch = Math.sin((this._cannonRecoilTime / 0.35) * Math.PI) * 0.08;
         }
-        this._currentPitch += (this._targetPitch + recoilPitch - this._currentPitch) * aimLerp;
+        this._currentPitch = this._targetPitch + recoilPitch;
 
         // Calculate elevation & traverse in degrees for HUD display
         this.cannonElevation = (this._targetPitch * 180) / Math.PI;
@@ -829,21 +830,19 @@ export class ShipDeckPlayer {
     private _updateSailAdjustState(dt: number): void {
         this._updatePromptCardUI(null);
 
-        // Free mouse look while adjusting rigging (freely inspect sails, mast, rigging, ocean)
-        const sensitivity = 0.0020;
-        this._targetYaw -= this._mouseDeltaX * sensitivity;
-        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        // Direct 1:1 mouse look while adjusting rigging (zero lag)
+        const sensitivity = 0.0022;
+        this._currentYaw -= this._mouseDeltaX * sensitivity;
+        this._currentPitch -= this._mouseDeltaY * sensitivity;
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
         // Generous vertical pitch range: from -25 deg (deck) to +72 deg (high masthead & crows nest)
         const minPitch = (-25.0 * Math.PI) / 180;
         const maxPitch = (72.0 * Math.PI) / 180;
-        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, minPitch, maxPitch);
-
-        const mouseLerp = 1.0 - Math.exp(-24.0 * dt);
-        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
-        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+        this._currentPitch = BABYLON.Scalar.Clamp(this._currentPitch, minPitch, maxPitch);
+        this._targetYaw = this._currentYaw;
+        this._targetPitch = this._currentPitch;
 
         // W hoists / trims canvas, S reefs / furls canvas
         if (this._keys["w"] || this._keys["arrowup"]) {
@@ -864,22 +863,20 @@ export class ShipDeckPlayer {
         this._updateRepairHUD();
     }
 
-    private _updateSpyglassState(dt: number): void {
+    private _updateSpyglassState(_dt: number): void {
         this._updatePromptCardUI(null);
 
-        // Smooth telescope look with optical dampening
-        const sensitivity = 0.0009;
-        this._targetYaw -= this._mouseDeltaX * sensitivity;
-        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        // Direct 1:1 telescope look (zero lag)
+        const sensitivity = 0.0010;
+        this._currentYaw -= this._mouseDeltaX * sensitivity;
+        this._currentPitch -= this._mouseDeltaY * sensitivity;
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
         const maxPitch = Math.PI * 0.40;
-        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, -maxPitch, maxPitch);
-
-        const mouseLerp = 1.0 - Math.exp(-22.0 * dt);
-        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
-        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+        this._currentPitch = BABYLON.Scalar.Clamp(this._currentPitch, -maxPitch, maxPitch);
+        this._targetYaw = this._currentYaw;
+        this._targetPitch = this._currentPitch;
     }
 
     // =========================================================================
