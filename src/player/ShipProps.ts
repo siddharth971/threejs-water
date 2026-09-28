@@ -57,6 +57,7 @@ export class ShipProps {
 
     // Helm Reference
     public helmWheelMesh: BABYLON.TransformNode | null = null;
+    public baseWheelQuaternion: BABYLON.Quaternion | null = null;
     public helmAngle = 0;
 
     constructor(scene: BABYLON.Scene, shipRoot: BABYLON.TransformNode) {
@@ -80,6 +81,35 @@ export class ShipProps {
         const steeringWheel = this._scene.getMeshByName("Steering Wheel") || this._scene.getTransformNodeByName("Steering Wheel");
         if (steeringWheel) {
             this.helmWheelMesh = steeringWheel;
+            // Position wheel prominently on the quarterdeck overlooking the main deck and sea
+            // In ship coordinates: x=0, y=2.75, z=3.30
+            const emptyScale = steeringWheel.parent && (steeringWheel.parent as any).scaling ? (steeringWheel.parent as any).scaling.x : 3.72825;
+            steeringWheel.position.set(0, 2.75 / emptyScale, 3.30 / emptyScale);
+            // Scale wheel up to authentic naval helm size (diameter ~0.85m)
+            steeringWheel.scaling.setAll(steeringWheel.scaling.x * 2.6);
+            if (steeringWheel.rotationQuaternion) {
+                this.baseWheelQuaternion = steeringWheel.rotationQuaternion.clone();
+            }
+
+            // Build handsome weathered mahogany helm binnacle / pedestal stand under wheel
+            const binnacleMat = new BABYLON.PBRMaterial("binnacleMat", this._scene);
+            binnacleMat.albedoColor = new BABYLON.Color3(0.35, 0.20, 0.12);
+            binnacleMat.roughness = 0.6;
+            binnacleMat.metallic = 0.1;
+            const binnacle = BABYLON.MeshBuilder.CreateBox("helmBinnacle", { width: 0.35, height: 0.75, depth: 0.35 }, this._scene);
+            binnacle.parent = this._shipRoot;
+            binnacle.position.set(0, 2.45 + 0.375, 3.30);
+            binnacle.material = binnacleMat;
+
+            // Brass compass dome on top of binnacle
+            const brassDomeMat = new BABYLON.PBRMaterial("brassDomeMat", this._scene);
+            brassDomeMat.albedoColor = new BABYLON.Color3(0.92, 0.78, 0.28);
+            brassDomeMat.metallic = 0.95;
+            brassDomeMat.roughness = 0.25;
+            const dome = BABYLON.MeshBuilder.CreateSphere("compassDome", { diameter: 0.18 }, this._scene);
+            dome.parent = this._shipRoot;
+            dome.position.set(0, 2.45 + 0.84, 3.30);
+            dome.material = brassDomeMat;
         }
 
         const sails = this._scene.getMeshByName("Sails");
@@ -110,9 +140,9 @@ export class ShipProps {
             this.starboardCannonMesh = cannons;
         }
 
-        // Apply top sail elevation so sea view is completely open, and taller sail scale
+        // Apply tall sail height and high sail elevation so sea view is completely open
         this.setSailHeight(1.30);
-        this.setSailElevation(1.10);
+        this.setSailElevation(2.40);
     }
 
     /**
@@ -455,26 +485,18 @@ export class ShipProps {
     /**
      * Executes cannon firing FX: recoil, flash light, fire & smoke burst, projectile arc, and ocean splash
      */
-    public fireCannon(isStarboard: boolean, elevationAngleDeg = 4.0, traverseAngleDeg = 0.0): void {
+    public fireCannon(isStarboard: boolean, customDirection?: BABYLON.Vector3): void {
         // Cannon world position on deck
         const localPos = isStarboard ? new BABYLON.Vector3(1.6, 1.6, 0.5) : new BABYLON.Vector3(-1.6, 1.6, 0.5);
         const worldPos = BABYLON.Vector3.TransformCoordinates(localPos, this._shipRoot.getWorldMatrix());
 
-        // Direction firing out into the sea:
-        // Base normal: +X for Starboard, -X for Port
-        // Traverse turns around Y (towards -Z or +Z)
-        // Elevation tilts up (+Y)
-        const radElev = (elevationAngleDeg * Math.PI) / 180;
-        const radTrav = (traverseAngleDeg * Math.PI) / 180;
-
-        const baseSign = isStarboard ? 1 : -1;
-        const dirLocal = new BABYLON.Vector3(
-            baseSign * Math.cos(radElev) * Math.cos(radTrav),
-            Math.sin(radElev),
-            -baseSign * Math.cos(radElev) * Math.sin(radTrav)
-        );
-
-        const fireDir = BABYLON.Vector3.TransformNormal(dirLocal, this._shipRoot.getWorldMatrix()).normalize();
+        let fireDir: BABYLON.Vector3;
+        if (customDirection) {
+            fireDir = customDirection.clone().normalize();
+        } else {
+            const shipRight = this._shipRoot.right;
+            fireDir = (isStarboard ? shipRight.scale(1) : shipRight.scale(-1)).add(new BABYLON.Vector3(0, 0.10, 0)).normalize();
+        }
 
         // 1. Muzzle Flash Light
         const flashLight = new BABYLON.PointLight("cannonFlash", worldPos.clone(), this._scene);
@@ -783,12 +805,18 @@ export class ShipProps {
     }
 
     /**
-     * Steers the ship helm wheel smoothly
+     * Steers the ship helm wheel smoothly with physical rotation
      */
     public rotateHelm(deltaAngle: number): void {
         this.helmAngle += deltaAngle;
         if (this.helmWheelMesh) {
-            this.helmWheelMesh.rotation.z = this.helmAngle;
+            if (!this.baseWheelQuaternion && this.helmWheelMesh.rotationQuaternion) {
+                this.baseWheelQuaternion = this.helmWheelMesh.rotationQuaternion.clone();
+            }
+            if (this.baseWheelQuaternion && this.helmWheelMesh.rotationQuaternion) {
+                const spinQuat = BABYLON.Quaternion.FromEulerAngles(0, this.helmAngle, 0);
+                this.baseWheelQuaternion.multiplyToRef(spinQuat, this.helmWheelMesh.rotationQuaternion);
+            }
         }
     }
 

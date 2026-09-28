@@ -298,12 +298,13 @@ export class ShipDeckPlayer {
         this.gameplayState = PlayerGameplayState.Helm;
         this._savedWalkPos.copyFrom(this._localPos);
 
-        // Position captain directly behind the steering wheel
-        this._localPos.set(0, 2.45 + this._eyeHeight, 4.75);
-        this._targetYaw = 0;
+        // Position captain directly at the helm station overlooking the deck
+        // Wheel is at Z = 3.30, Captain stands at Z = 3.90 on the quarterdeck (Y = 2.45)
+        this._localPos.set(0, 2.45 + this._eyeHeight, 3.90);
+        this._targetYaw = 0; // Facing forward towards bow (-Z)
         this._currentYaw = 0;
-        this._targetPitch = -0.06;
-        this._currentPitch = -0.06;
+        this._targetPitch = -0.10; // Slightly looking down past the wheel towards deck & open sea
+        this._currentPitch = -0.10;
         this._currentVelocity.set(0, 0, 0);
 
         this.interactiveObjects.clearHighlight();
@@ -314,13 +315,14 @@ export class ShipDeckPlayer {
         if (this._helmHUD) this._helmHUD.style.display = "flex";
         if (this._deckNavBar) this._deckNavBar.style.display = "none";
 
-        this.showToast("⚓ Helm Station active! Steer rudder with [A] / [D], adjust sails with [W] / [S]. Press [F] to release.", "CONTROL SHIP");
+        this.showToast("⚓ Helm Station active! Steer rudder with [A] / [D], adjust speed with [W] / [S]. Press [F] to release.", "CONTROL SHIP");
     }
 
     public exitHelmState(): void {
         this.gameplayState = PlayerGameplayState.Walking;
         this.interactiveObjects.isAtHelm = false;
-        this._localPos.set(0, 2.45 + this._eyeHeight, 4.6);
+        // Step back slightly from the wheel onto quarterdeck
+        this._localPos.set(0, 2.45 + this._eyeHeight, 4.25);
 
         if (this._crosshair) this._crosshair.style.display = "block";
         if (this._helmHUD) this._helmHUD.style.display = "none";
@@ -351,13 +353,13 @@ export class ShipDeckPlayer {
 
         this.cannonElevation = 4.0;
         this.cannonTraverse = 0.0;
-        this._targetPitch = (-this.cannonElevation * Math.PI) / 180;
+        this._targetPitch = (this.cannonElevation * Math.PI) / 180;
         this._currentPitch = this._targetPitch;
         this._currentVelocity.set(0, 0, 0);
 
         this.interactiveObjects.clearHighlight();
 
-        if (this._crosshair) this._crosshair.style.display = "none";
+        if (this._crosshair) this._crosshair.style.display = "block";
         if (this._cannonHUD) this._cannonHUD.style.display = "flex";
         if (this._deckNavBar) this._deckNavBar.style.display = "none";
 
@@ -371,7 +373,9 @@ export class ShipDeckPlayer {
         }
 
         this.audio.playCannonBlast();
-        this.props.fireCannon(this.isStarboardCannon, this.cannonElevation, this.cannonTraverse);
+        // Fire along the camera's sightline ray directly through the aiming reticle
+        const forwardRay = this._camera.getForwardRay();
+        this.props.fireCannon(this.isStarboardCannon, forwardRay.direction);
 
         // Recoil shake
         this._cannonRecoilTime = 0.35;
@@ -709,23 +713,43 @@ export class ShipDeckPlayer {
     private _updateHelmState(dt: number): void {
         this._updatePromptCardUI(null);
 
-        // A / D steers the rudder and turns the wheel
-        let steerInput = 0;
-        if (this._keys["a"] || this._keys["arrowleft"]) steerInput += 1; // Turn Port (left)
-        if (this._keys["d"] || this._keys["arrowright"]) steerInput -= 1; // Turn Starboard (right)
+        // Free mouse look while captaining the ship (no more fixed staring!)
+        const sensitivity = 0.0020;
+        this._targetYaw -= this._mouseDeltaX * sensitivity;
+        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
 
-        // Smooth rudder angle response
-        const targetRudder = steerInput * 32; // degrees
+        // Clamp view so captain stays facing forward with generous freedom (±80 deg yaw, ±40 deg pitch)
+        const maxTurn = (80.0 * Math.PI) / 180;
+        const minPitch = (-38.0 * Math.PI) / 180;
+        const maxPitch = (45.0 * Math.PI) / 180;
+        this._targetYaw = BABYLON.Scalar.Clamp(this._targetYaw, -maxTurn, maxTurn);
+        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, minPitch, maxPitch);
+
+        const mouseLerp = 1.0 - Math.exp(-24.0 * dt);
+        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
+        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
+
+        // A / D steers the rudder and turns the wheel:
+        // [A] = Port (left), [D] = Starboard (right)
+        let steerInput = 0;
+        if (this._keys["a"] || this._keys["arrowleft"]) steerInput = -1; // Port (left)
+        if (this._keys["d"] || this._keys["arrowright"]) steerInput = 1;  // Starboard (right)
+
+        // Smooth rudder angle response: -30 (Port) to +30 (Starboard)
+        const targetRudder = steerInput * 30; // degrees
         this.rudderAngle += (targetRudder - this.rudderAngle) * (1.0 - Math.exp(-6.0 * dt));
 
         if (steerInput !== 0) {
-            this.props.rotateHelm(steerInput * dt * 2.8);
+            // Turn wheel: left for Port, right for Starboard
+            this.props.rotateHelm(-steerInput * dt * 2.8);
             this.audio.playHelmCreak();
 
             // Rotate ship hull in the ocean water via buoyancy
             const turnRate = 0.38; // rad/s
             if (this._buoyancy) {
-                this._buoyancy.rotateMeshYaw(this._shipRoot, steerInput * turnRate * dt);
+                this._buoyancy.rotateMeshYaw(this._shipRoot, -steerInput * turnRate * dt);
             }
         }
 
@@ -756,26 +780,40 @@ export class ShipDeckPlayer {
     private _updateCannonAimState(dt: number): void {
         this._updatePromptCardUI(null);
 
-        // Mouse look controls elevation and traverse
-        const sensitivity = 0.08;
-        this.cannonTraverse -= this._mouseDeltaX * sensitivity;
-        this.cannonElevation -= this._mouseDeltaY * sensitivity;
+        // Natural FPS Mouse look controls:
+        // Moving mouse UP -> tilts aim UP
+        // Moving mouse DOWN -> tilts aim DOWN
+        // Moving mouse LEFT -> traverses aim LEFT
+        // Moving mouse RIGHT -> traverses aim RIGHT
+        const mouseSensitivity = 0.0020;
+        const baseBroadsideYaw = this.isStarboardCannon ? -Math.PI / 2 : Math.PI / 2;
+
+        this._targetYaw -= this._mouseDeltaX * mouseSensitivity;
+        this._targetPitch -= this._mouseDeltaY * mouseSensitivity;
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
 
-        // Keys also adjust aim
-        if (this._keys["w"] || this._keys["arrowup"]) this.cannonElevation += dt * 14;
-        if (this._keys["s"] || this._keys["arrowdown"]) this.cannonElevation -= dt * 14;
-        if (this._keys["a"] || this._keys["arrowleft"]) this.cannonTraverse += dt * 16;
-        if (this._keys["d"] || this._keys["arrowright"]) this.cannonTraverse -= dt * 16;
+        // Keys also adjust aim smoothly:
+        // W = pitch up, S = pitch down
+        if (this._keys["w"] || this._keys["arrowup"]) this._targetPitch += dt * 0.45;
+        if (this._keys["s"] || this._keys["arrowdown"]) this._targetPitch -= dt * 0.45;
 
-        this.cannonElevation = BABYLON.Scalar.Clamp(this.cannonElevation, -6.0, 22.0);
-        this.cannonTraverse = BABYLON.Scalar.Clamp(this.cannonTraverse, -25.0, 25.0);
+        // A = traverse left, D = traverse right (relative to camera facing out the gunport)
+        if (this._keys["a"] || this._keys["arrowleft"]) this._targetYaw += dt * 0.55;
+        if (this._keys["d"] || this._keys["arrowright"]) this._targetYaw -= dt * 0.55;
 
-        // Base broadside yaw: Starboard is -PI/2, Port is +PI/2
-        const baseBroadsideYaw = this.isStarboardCannon ? -Math.PI / 2 : Math.PI / 2;
-        const targetYaw = baseBroadsideYaw + (this.cannonTraverse * Math.PI) / 180;
-        const targetPitch = (-this.cannonElevation * Math.PI) / 180;
+        // Clamp elevation: -8 deg (down towards sea) to +26 deg (up towards rigging/sky)
+        const minPitch = (-8.0 * Math.PI) / 180;
+        const maxPitch = (26.0 * Math.PI) / 180;
+        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, minPitch, maxPitch);
+
+        // Clamp traverse: ±28 deg from gunport center
+        const maxTraverse = (28.0 * Math.PI) / 180;
+        this._targetYaw = BABYLON.Scalar.Clamp(this._targetYaw, baseBroadsideYaw - maxTraverse, baseBroadsideYaw + maxTraverse);
+
+        // Exponential smoothing for buttery smooth aiming
+        const aimLerp = 1.0 - Math.exp(-24.0 * dt);
+        this._currentYaw += (this._targetYaw - this._currentYaw) * aimLerp;
 
         // Handle firing recoil kick
         let recoilPitch = 0;
@@ -783,10 +821,12 @@ export class ShipDeckPlayer {
             this._cannonRecoilTime -= dt;
             recoilPitch = Math.sin((this._cannonRecoilTime / 0.35) * Math.PI) * 0.08;
         }
+        this._currentPitch += (this._targetPitch + recoilPitch - this._currentPitch) * aimLerp;
 
-        const aimLerp = 1.0 - Math.exp(-24.0 * dt);
-        this._currentYaw += (targetYaw - this._currentYaw) * aimLerp;
-        this._currentPitch += (targetPitch + recoilPitch - this._currentPitch) * aimLerp;
+        // Calculate elevation & traverse in degrees for HUD display
+        this.cannonElevation = (this._targetPitch * 180) / Math.PI;
+        const rawTraverseRad = this._targetYaw - baseBroadsideYaw;
+        this.cannonTraverse = (rawTraverseRad * 180) / Math.PI * (this.isStarboardCannon ? -1 : 1);
 
         this._updateCannonHUD();
     }
@@ -865,14 +905,16 @@ export class ShipDeckPlayer {
 
         const rudderEl = this._helmHUD.querySelector("#helm-rudder-text");
         if (rudderEl) {
-            const side = this.rudderAngle > 1 ? "PORT" : this.rudderAngle < -1 ? "STARBOARD" : "MIDSHIPS";
+            const side = this.rudderAngle < -1 ? "PORT" : this.rudderAngle > 1 ? "STARBOARD" : "MIDSHIPS";
             const deg = Math.abs(Math.round(this.rudderAngle));
             rudderEl.textContent = side === "MIDSHIPS" ? "0° MIDSHIPS" : `${deg}° ${side}`;
         }
 
         const needleEl = this._helmHUD.querySelector("#helm-rudder-needle") as HTMLElement;
         if (needleEl) {
-            const pct = 50 + (this.rudderAngle / 32) * 45;
+            // Rudder angle is -30 (Port / Left) to +30 (Starboard / Right)
+            // Left is PORT [A] (~8%), Right is [D] STBD (~92%), Center is 50%
+            const pct = 50 + (this.rudderAngle / 30) * 42;
             needleEl.style.left = `${pct}%`;
         }
 
