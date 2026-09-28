@@ -687,14 +687,21 @@ export class ShipProps {
         return this.isSailsTrimmed;
     }
 
+    private _windThrottleTimer = 0;
+
     /**
-     * Updates dynamic wind wave air ripples across the sail canvas
+     * Updates dynamic wind wave air ripples across the sail canvas (throttled for peak FPS)
      */
     private _updateSailWindWave(): void {
         if (!this.windWaveEnabled || !this.sailsMesh || !this._baseSailPositions || !this._animatedSailPositions) return;
 
-        const dt = 0.016;
-        this._windTime += dt * this.windWaveSpeed;
+        const engine = this._scene.getEngine();
+        const dt = Math.min(0.04, engine.getDeltaTime() / 1000 || 0.016);
+        this._windThrottleTimer += dt;
+        if (this._windThrottleTimer < 0.024) return; // ~40 FPS cloth ripple
+        this._windTime += this._windThrottleTimer * this.windWaveSpeed;
+        this._windThrottleTimer = 0;
+
         const t = this._windTime;
         const amp = this.windWaveIntensity;
 
@@ -708,7 +715,6 @@ export class ShipProps {
             const z = base[i + 2];
 
             // Harmonic wind ripples across fabric:
-            // Primary wind wave + high-frequency flutter + deep breathing billow
             const wave = Math.sin(x * 2.6 + t * 1.8 + z * 1.4) * Math.cos(z * 1.6 + t * 1.2) * amp
                        + Math.sin(x * 5.2 + t * 3.4) * (amp * 0.35)
                        + Math.sin(t * 0.9) * (amp * 0.45);

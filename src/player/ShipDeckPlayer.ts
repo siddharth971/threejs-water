@@ -20,11 +20,16 @@ export class ShipDeckPlayer {
 
     // Movement state (Ship local coordinates)
     private _localPos: BABYLON.Vector3;
-    private _yaw = 0; // Face forward towards bow (-Z) initially
-    private _pitch = 0;
+    private _targetYaw = 0; // Face forward towards bow (-Z) initially
+    private _currentYaw = 0;
+    private _targetPitch = 0;
+    private _currentPitch = 0;
+    private _mouseDeltaX = 0;
+    private _mouseDeltaY = 0;
+
     private _eyeHeight = 1.62;
-    private _walkSpeed = 3.4;
-    private _moveVelocity = new BABYLON.Vector3(0, 0, 0);
+    private _walkSpeed = 3.5;
+    private _currentVelocity = new BABYLON.Vector3(0, 0, 0);
 
     // Jump physics
     private _verticalVelocity = 0;
@@ -32,8 +37,9 @@ export class ShipDeckPlayer {
     private readonly _gravity = -14.0;
     private readonly _jumpForce = 4.6;
 
-    // Head bob
+    // Smooth head bob
     private _bobTimer = 0;
+    private _bobWeight = 0;
     private _footstepTimer = 0;
 
     // Input tracking
@@ -203,13 +209,9 @@ export class ShipDeckPlayer {
         window.addEventListener("mousemove", (e) => {
             if (!this._isPointerLocked || !this._isFirstPerson) return;
 
-            const sensitivity = 0.0022;
-            this._yaw -= e.movementX * sensitivity;
-            this._pitch -= e.movementY * sensitivity;
-
-            // Clamp pitch to avoid neck snapping (-85 deg to +85 deg)
-            const maxPitch = Math.PI * 0.46;
-            this._pitch = BABYLON.Scalar.Clamp(this._pitch, -maxPitch, maxPitch);
+            // Accumulate raw mouse deltas for frame-rate independent smoothing
+            this._mouseDeltaX += e.movementX;
+            this._mouseDeltaY += e.movementY;
         });
 
         // Left Click: Attack / Swing Cutlass
@@ -237,6 +239,13 @@ export class ShipDeckPlayer {
             // Save spectator position before returning to deck
             this._spectatorPos.copyFrom(this._camera.position);
             this._spectatorRot.copyFrom(this._camera.rotation);
+
+            // Sync smoothed rotations
+            this._targetYaw = this._currentYaw;
+            this._targetPitch = this._currentPitch;
+            this._mouseDeltaX = 0;
+            this._mouseDeltaY = 0;
+            this._currentVelocity.set(0, 0, 0);
 
             // Restore First Person parented to ship
             this._camera.parent = this._pitchNode;
@@ -280,7 +289,24 @@ export class ShipDeckPlayer {
     public update(): void {
         if (!this._isFirstPerson) return;
 
-        const dt = 0.016;
+        // Dynamic frame delta time from engine (capped to 40ms to avoid physics exploding)
+        const dt = Math.min(0.04, this.engine.getDeltaTime() / 1000 || 0.016);
+
+        // Process mouse look with responsive exponential smoothing
+        const sensitivity = 0.0020;
+        this._targetYaw -= this._mouseDeltaX * sensitivity;
+        this._targetPitch -= this._mouseDeltaY * sensitivity;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+
+        // Clamp target pitch to prevent neck snapping (-83 deg to +83 deg)
+        const maxPitch = Math.PI * 0.46;
+        this._targetPitch = BABYLON.Scalar.Clamp(this._targetPitch, -maxPitch, maxPitch);
+
+        // Exponential lerp smoothing: zero mouse lag + zero jitter
+        const mouseLerp = 1.0 - Math.exp(-28.0 * dt);
+        this._currentYaw += (this._targetYaw - this._currentYaw) * mouseLerp;
+        this._currentPitch += (this._targetPitch - this._currentPitch) * mouseLerp;
 
         // If at the Helm, A/D steers the ship wheel and rudder instead of normal strafing!
         if (this.interactiveObjects.isAtHelm) {
@@ -309,13 +335,14 @@ export class ShipDeckPlayer {
 
             const isMoving = moveForward !== 0 || moveRight !== 0;
 
-            if (isMoving) {
-                // Vector in player's local yaw direction (Right-Handed System: Look is -Z, Right is +X)
-                const forward = new BABYLON.Vector3(-Math.sin(this._yaw), 0, -Math.cos(this._yaw));
-                const right = new BABYLON.Vector3(Math.cos(this._yaw), 0, -Math.sin(this._yaw));
+            // Target movement direction in player's smoothed yaw heading
+            const forward = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
+            const right = new BABYLON.Vector3(Math.cos(this._currentYaw), 0, -Math.sin(this._currentYaw));
 
+            let targetVelocity = BABYLON.Vector3.Zero();
+            if (isMoving) {
                 const moveDir = forward.scale(moveForward).add(right.scale(moveRight)).normalize();
-                this._moveVelocity.copyFrom(moveDir.scale(this._walkSpeed));
+                targetVelocity = moveDir.scale(this._walkSpeed);
 
                 // Footstep sounds
                 this._footstepTimer += dt;
@@ -324,20 +351,26 @@ export class ShipDeckPlayer {
                     this._footstepTimer = 0;
                 }
 
-                // Head bobbing
-                this._bobTimer += dt * 11;
+                this._bobTimer += dt * 10;
             } else {
-                this._moveVelocity.set(0, 0, 0);
-                this._bobTimer = 0;
                 this._footstepTimer = 0.4;
             }
 
-            // Apply horizontal motion
-            this._localPos.x += this._moveVelocity.x * dt;
-            this._localPos.z += this._moveVelocity.z * dt;
+            // Smooth momentum acceleration & deceleration
+            const accelRate = isMoving ? 14.0 : 18.0;
+            const moveLerp = 1.0 - Math.exp(-accelRate * dt);
+            BABYLON.Vector3.LerpToRef(this._currentVelocity, targetVelocity, moveLerp, this._currentVelocity);
+
+            // Apply horizontal velocity
+            this._localPos.x += this._currentVelocity.x * dt;
+            this._localPos.z += this._currentVelocity.z * dt;
 
             // Clamp inside ship railings and bulkheads
             this._clampToDeckBounds(this._localPos);
+
+            // Smooth head bob weight
+            const targetBobWeight = isMoving ? 1.0 : 0.0;
+            this._bobWeight = BABYLON.Scalar.Lerp(this._bobWeight, targetBobWeight, 1.0 - Math.exp(-8.0 * dt));
 
             // Vertical / Jump Physics
             const targetDeckHeight = this._getDeckHeight(this._localPos.x, this._localPos.z);
@@ -355,22 +388,23 @@ export class ShipDeckPlayer {
                 }
             } else {
                 // Smooth step interpolation for stairs
-                this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, targetEyeY, 0.25);
+                const stepLerp = 1.0 - Math.exp(-16.0 * dt);
+                this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, targetEyeY, stepLerp);
             }
         }
 
         // Apply Head Bobbing
-        const bobOffset = Math.sin(this._bobTimer) * 0.035;
+        const bobOffset = Math.sin(this._bobTimer) * 0.030 * this._bobWeight;
 
         // Update player node transform relative to shipRoot
         this._playerNode.position.set(this._localPos.x, this._localPos.y + bobOffset, this._localPos.z);
-        this._playerNode.rotation.set(0, this._yaw, 0);
+        this._playerNode.rotation.set(0, this._currentYaw, 0);
 
         // Update pitch node
-        this._pitchNode.rotation.set(this._pitch, 0, 0);
+        this._pitchNode.rotation.set(this._currentPitch, 0, 0);
 
         // Calculate facing direction for interaction dot product
-        const forwardLocal = new BABYLON.Vector3(-Math.sin(this._yaw), 0, -Math.cos(this._yaw));
+        const forwardLocal = new BABYLON.Vector3(-Math.sin(this._currentYaw), 0, -Math.cos(this._currentYaw));
 
         // Update Proximity to Interactive Objects
         const nearest = this.interactiveObjects.updateProximity(this._localPos, forwardLocal);
