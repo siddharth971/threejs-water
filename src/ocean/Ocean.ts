@@ -6,6 +6,7 @@ import { SkyBox } from './SkyBox';
 import { OceanMaterial } from './OceanMaterial';
 import { OceanGeometry } from './OceanGeometry';
 import { OceanGUI } from './OceanGUI';
+import { ShipDeckPlayer } from '../player/ShipDeckPlayer';
 
 const showBuoy = false;
 const showFisherBoat = false;
@@ -36,6 +37,12 @@ export class Ocean {
     private _shadowGeneratorBuoy: BABYLON.ShadowGenerator;
     private _glowLayer: BABYLON.GlowLayer;
     private _forceUpdateGlowIntensity: boolean;
+    private _canvas: HTMLCanvasElement = null as any;
+    private _player: ShipDeckPlayer | null = null;
+
+    public get player(): ShipDeckPlayer | null {
+        return this._player;
+    }
 
     constructor() {
         this._engine = null as any;
@@ -92,10 +99,11 @@ export class Ocean {
 
         this._engine = engine;
         this._scene = scene;
+        this._canvas = canvas;
 
         this._camera = new BABYLON.FreeCamera("mainCamera", new BABYLON.Vector3(-17.3, 5, -9), scene);
         this._camera.rotation.set(0.21402315044176745, 1.5974857677541419, 0);
-        this._camera.minZ = 1;
+        this._camera.minZ = 0.05;
         this._camera.maxZ = 500000;
 
         if (!this._checkSupport()) {
@@ -118,7 +126,7 @@ export class Ocean {
         const cameraUpdate = this._camera.update.bind(this._camera);
         this._camera.update = function() {
             cameraUpdate();
-            if (this.position.y < 1.5) {
+            if (!this.parent && this.position.y < 1.5) {
                 this.position.y = 1.5;
             }
         };
@@ -428,6 +436,9 @@ export class Ocean {
                 -0.45,
                 2
             );
+
+            // Initialize First-Person Player on the Pirate Ship Deck
+            this._player = new ShipDeckPlayer(this._scene, this._engine, this._canvas, shipRoot, this._camera);
         }
     }
 
