@@ -12,10 +12,10 @@ export enum Seams {
 export class OceanGeometry {
 
     public lengthScale = 15;
-    public vertexDensity = 30;
+    public vertexDensity = 24;
     public clipLevels = 8;
     public skirtSize = 40;
-    public noMaterialLod = true;
+    public noMaterialLod = false;
     public useSkirt = true;
 
     private _scene: BABYLON.Scene;
@@ -96,6 +96,16 @@ export class OceanGeometry {
         return this._materials[index];
     }
 
+    public setUnderwater(isUnderwater: boolean): void {
+        this._oceanMaterial.setUnderwater(isUnderwater);
+        for (let i = 0; i < this._materials.length; i++) {
+            const mat = this._materials[i];
+            if (mat) {
+                mat.backFaceCulling = !isUnderwater;
+            }
+        }
+    }
+
     private _updateMaterials(): void {
         const activeLevels = this._activeLodLevels;
 
@@ -114,6 +124,7 @@ export class OceanGeometry {
     private _updatePositions(): void {
         const k = this._gridSize;
         const activeLevels = this._activeLodLevels;
+        const cameraPos = this._camera.globalPosition;
 
         let previousSnappedPosition = BABYLON.TmpVectors.Vector3[0];
         const centerOffset = BABYLON.TmpVectors.Vector3[1];
@@ -122,7 +133,7 @@ export class OceanGeometry {
 
         let scale = this._clipLevelScale(-1, activeLevels);
 
-        previousSnappedPosition.copyFrom(this._camera.position);
+        previousSnappedPosition.copyFrom(cameraPos);
 
         this._snap(previousSnappedPosition, scale * 2);
         this._offsetFromCenter(-1, activeLevels, centerOffset);
@@ -139,7 +150,7 @@ export class OceanGeometry {
 
             scale = this._clipLevelScale(i, activeLevels);
 
-            snappedPosition.copyFrom(this._camera.position);
+            snappedPosition.copyFrom(cameraPos);
 
             this._snap(snappedPosition, scale * 2);
             this._offsetFromCenter(i, activeLevels, centerOffset);
@@ -170,7 +181,7 @@ export class OceanGeometry {
     }
 
     private get _activeLodLevels(): number {
-        return this.clipLevels - BABYLON.Scalar.Clamp(Math.floor(Math.log2((1.7 * Math.abs(this._camera.position.y) + 1) / this.lengthScale)), 0, this.clipLevels);
+        return this.clipLevels - BABYLON.Scalar.Clamp(Math.floor(Math.log2((1.7 * Math.abs(this._camera.globalPosition.y) + 1) / this.lengthScale)), 0, this.clipLevels);
     }
 
     private _clipLevelScale(level: number, activeLevels: number): number {
@@ -246,7 +257,7 @@ export class OceanGeometry {
         mesh.name = name;
         mesh.material = mat;
         mesh.parent = this._root;
-        mesh.receiveShadows = true;
+        mesh.receiveShadows = name === "Center" || name === "Ring 0";
 
         return mesh;
     }

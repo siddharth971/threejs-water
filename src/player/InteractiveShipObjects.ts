@@ -33,6 +33,7 @@ export class InteractiveShipObjects {
     // State Tracking
     public isAtHelm = false;
     public isUsingSpyglass = false;
+    private readonly _tmpToObj = new BABYLON.Vector3();
 
     constructor(scene: BABYLON.Scene, shipRoot: BABYLON.TransformNode, audio: ShipAudio, props: ShipProps) {
         this._scene = scene;
@@ -48,9 +49,9 @@ export class InteractiveShipObjects {
     private _setupHighlightLayer(): void {
         try {
             this._highlightLayer = new BABYLON.HighlightLayer("shipInteractHighlight", this._scene, {
-                mainTextureRatio: 1.0,
-                blurHorizontalSize: 1.0,
-                blurVerticalSize: 1.0,
+                mainTextureRatio: 0.5,
+                blurHorizontalSize: 0.75,
+                blurVerticalSize: 0.75,
                 isStroke: true
             });
         } catch {
@@ -237,10 +238,12 @@ export class InteractiveShipObjects {
             obj.beaconMesh = beacon;
         }
 
-        // Animate glowing rings and floating diamond beacons
+        // Animate glowing rings and floating diamond beacons (delta-time normalized)
         let animTime = 0;
+        const engine = this._scene.getEngine();
         this._scene.onBeforeRenderObservable.add(() => {
-            animTime += 0.035;
+            const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
+            animTime += dt * 2.1;
             const pulse = 0.92 + Math.sin(animTime * 1.5) * 0.12;
             const bob = Math.sin(animTime * 2.0) * 0.06;
 
@@ -249,7 +252,7 @@ export class InteractiveShipObjects {
                     obj.ringMesh.scaling.set(pulse, 1, pulse);
                 }
                 if (obj.beaconMesh) {
-                    obj.beaconMesh.rotation.y += 0.025;
+                    obj.beaconMesh.rotation.y += dt * 1.5;
                     obj.beaconMesh.position.y = obj.localPos.y + 1.1 + bob;
                 }
             }
@@ -265,24 +268,24 @@ export class InteractiveShipObjects {
         let minDistance = Infinity;
 
         for (const obj of this.objects) {
-            const dist = BABYLON.Vector3.Distance(
-                new BABYLON.Vector3(playerLocalPos.x, 0, playerLocalPos.z),
-                new BABYLON.Vector3(obj.localPos.x, 0, obj.localPos.z)
-            );
+            const dx = obj.localPos.x - playerLocalPos.x;
+            const dz = obj.localPos.z - playerLocalPos.z;
+            const dist = Math.hypot(dx, dz);
 
             // Also check Y difference (cannot interact across decks)
             const yDist = Math.abs(playerLocalPos.y - obj.localPos.y);
 
             if (dist <= obj.interactionRadius && yDist < 1.85) {
                 // Check if facing roughly towards object (within 130 degrees field of view)
-                const toObj = obj.localPos.subtract(playerLocalPos).normalize();
-                const dot = BABYLON.Vector3.Dot(playerFacingForward, toObj);
+                obj.localPos.subtractToRef(playerLocalPos, this._tmpToObj);
+                const len = this._tmpToObj.length();
+                const dot = len > 1e-5
+                    ? (playerFacingForward.x * this._tmpToObj.x + playerFacingForward.y * this._tmpToObj.y + playerFacingForward.z * this._tmpToObj.z) / len
+                    : 1;
 
-                if (dot > -0.25) {
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closest = obj;
-                    }
+                if (dot > -0.25 && dist < minDistance) {
+                    minDistance = dist;
+                    closest = obj;
                 }
             }
         }

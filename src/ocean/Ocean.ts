@@ -34,7 +34,6 @@ export class Ocean {
     private _lightDirection: BABYLON.Vector3;
     private _shadowGenerator: BABYLON.ShadowGenerator;
     private _lightBuoy: BABYLON.PointLight;
-    private _shadowGeneratorBuoy: BABYLON.ShadowGenerator;
     private _glowLayer: BABYLON.GlowLayer;
     private _forceUpdateGlowIntensity: boolean;
     private _canvas: HTMLCanvasElement = null as any;
@@ -67,7 +66,6 @@ export class Ocean {
         this._lightDirection = new BABYLON.Vector3(0, -1, -0.25);
         this._shadowGenerator = null as any;
         this._lightBuoy = null as any;
-        this._shadowGeneratorBuoy = null as any;
         this._glowLayer = null as any;
         this._forceUpdateGlowIntensity = true;
 
@@ -132,8 +130,8 @@ export class Ocean {
         const cameraUpdate = this._camera.update.bind(this._camera);
         this._camera.update = function() {
             cameraUpdate();
-            if (!this.parent && this.position.y < 1.5) {
-                this.position.y = 1.5;
+            if (!this.parent && this.position.y < -15) {
+                this.position.y = -15;
             }
         };
 
@@ -147,7 +145,7 @@ export class Ocean {
         this._light.shadowMaxZ = 40;
         this._light.shadowOrthoScale = 0.5;
 
-        this._shadowGenerator = new BABYLON.ShadowGenerator(4096, this._light);
+        this._shadowGenerator = new BABYLON.ShadowGenerator(2048, this._light);
         this._shadowGenerator.usePercentageCloserFiltering = true;
         this._shadowGenerator.bias = 0.005;
 
@@ -184,6 +182,8 @@ export class Ocean {
         });
 
         scene.onBeforeRenderObservable.add(() => {
+            const dt = Math.min(0.05, this._engine.getDeltaTime() / 1000 || 0.016);
+
             if (this._skybox.update(this._light) || this._forceUpdateGlowIntensity) {
                 if (this._glowLayer) {
                     const minIntensity = 0.6;
@@ -202,13 +202,15 @@ export class Ocean {
                 this._light.position = this._light.position.clone().normalize().scaleInPlace(30);
             }
             this._oceanMaterial.setHorizonColor(this._skybox.getHorizonColor());
-            this._oceanGeometry.update();
-            this._wavesGenerator!.update();
+            this._wavesGenerator!.update(this._buoyancy.enabled);
             this._buoyancy.setWaterHeightMap(this._wavesGenerator!.waterHeightMap, this._wavesGenerator!.waterHeightMapScale);
-            this._buoyancy.update();
+            this._buoyancy.update(dt);
             if (this._player) {
                 this._player.update();
             }
+            this._camera.getViewMatrix(true);
+            this._skybox.syncPosition();
+            this._oceanGeometry.update();
         });
 
         return new Promise((resolve) => {
@@ -326,11 +328,6 @@ export class Ocean {
             this._lightBuoy.shadowMinZ = 0.01;
             this._lightBuoy.shadowMaxZ = 15;
             this._lightBuoy.parent = slight;
-
-            this._shadowGeneratorBuoy = new BABYLON.ShadowGenerator(2048, this._lightBuoy);
-            this._shadowGeneratorBuoy.usePoissonSampling = true;
-            this._shadowGeneratorBuoy.addShadowCaster(babylonBuoyMeshes[0]);
-            this._shadowGeneratorBuoy.bias = 0.01;
         }
 
         if (showPirateShip) {
@@ -450,7 +447,16 @@ export class Ocean {
             );
 
             // Initialize First-Person Player on the Pirate Ship Deck
-            this._player = new ShipDeckPlayer(this._scene, this._engine, this._canvas, shipRoot, this._camera, this._buoyancy);
+            this._player = new ShipDeckPlayer(
+                this._scene,
+                this._engine,
+                this._canvas,
+                shipRoot,
+                this._camera,
+                this._buoyancy,
+                (submerged) => this._oceanGeometry.setUnderwater(submerged)
+            );
+            this._player.registerShadowCasters(this._shadowGenerator);
             this._player.props.setSailHeight(this._sailHeight);
             this._player.props.setSailElevation(this._sailElevation);
             this._player.props.windWaveSpeed = this._windWaveSpeed;

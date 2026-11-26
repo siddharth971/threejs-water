@@ -480,9 +480,11 @@ export class ShipProps {
         flashLight.range = 25;
 
         let flashTimer = 0;
+        const engine = this._scene.getEngine();
         const flashObserver = this._scene.onBeforeRenderObservable.add(() => {
-            flashTimer += 0.016;
-            flashLight.intensity *= 0.65;
+            const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
+            flashTimer += dt;
+            flashLight.intensity *= Math.pow(0.65, dt * 60);
             if (flashTimer > 0.18) {
                 flashLight.dispose();
                 this._scene.onBeforeRenderObservable.remove(flashObserver);
@@ -519,9 +521,9 @@ export class ShipProps {
 
         const ballObserver = this._scene.onBeforeRenderObservable.add(() => {
             if (!alive) return;
-            const dt = 0.016;
+            const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
             velocity.y -= 9.8 * dt;
-            ball.position.addInPlace(velocity.scale(dt));
+            ball.position.addInPlaceFromFloats(velocity.x * dt, velocity.y * dt, velocity.z * dt);
 
             // Impact with ocean surface (y <= 0)
             if (ball.position.y <= 0.1) {
@@ -534,27 +536,34 @@ export class ShipProps {
     }
 
     /**
+     * Creates a white water splash / spray burst on the ocean surface at a given world position
+     */
+    public createWaterSplashAt(pos: BABYLON.Vector3, scale = 1.0): void {
+        const splash = new BABYLON.ParticleSystem("waterSplash", Math.round(90 * Math.max(0.4, scale)), this._scene);
+        splash.particleTexture = new BABYLON.Texture("textures/flare.png", this._scene);
+        splash.emitter = pos;
+        splash.color1 = new BABYLON.Color4(0.85, 0.96, 1.0, scale < 0.8 ? 0.45 : 0.85);
+        splash.color2 = new BABYLON.Color4(0.55, 0.85, 0.96, scale < 0.8 ? 0.30 : 0.65);
+        splash.colorDead = new BABYLON.Color4(0.4, 0.78, 0.92, 0.0);
+        splash.minSize = 0.25 * scale;
+        splash.maxSize = 0.95 * scale;
+        splash.minLifeTime = 0.55;
+        splash.maxLifeTime = 1.15;
+        splash.gravity = new BABYLON.Vector3(0, -9.8, 0);
+        splash.direction1 = new BABYLON.Vector3(-1.2 * scale, 4.0 * scale, -1.2 * scale);
+        splash.direction2 = new BABYLON.Vector3(1.2 * scale, 6.8 * scale, 1.2 * scale);
+        splash.minEmitPower = 2 * scale;
+        splash.maxEmitPower = 4.5 * scale;
+        splash.manualEmitCount = Math.round(70 * Math.max(0.4, scale));
+        splash.disposeOnStop = true;
+        splash.start();
+    }
+
+    /**
      * Creates a towering white water splash / spray on the ocean surface where the cannonball lands
      */
     private _createWaterSplash(pos: BABYLON.Vector3): void {
-        const splash = new BABYLON.ParticleSystem("cannonSplash", 120, this._scene);
-        splash.particleTexture = new BABYLON.Texture("textures/flare.png", this._scene);
-        splash.emitter = pos;
-        splash.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 0.9);
-        splash.color2 = new BABYLON.Color4(0.8, 0.92, 1.0, 0.7);
-        splash.colorDead = new BABYLON.Color4(0.7, 0.85, 0.95, 0.0);
-        splash.minSize = 0.4;
-        splash.maxSize = 1.4;
-        splash.minLifeTime = 0.8;
-        splash.maxLifeTime = 1.6;
-        splash.gravity = new BABYLON.Vector3(0, -9.8, 0);
-        splash.direction1 = new BABYLON.Vector3(-1.2, 5, -1.2);
-        splash.direction2 = new BABYLON.Vector3(1.2, 8, 1.2);
-        splash.minEmitPower = 2;
-        splash.maxEmitPower = 5;
-        splash.manualEmitCount = 90;
-        splash.disposeOnStop = true;
-        splash.start();
+        this.createWaterSplashAt(pos, 1.0);
     }
 
     /**
@@ -576,8 +585,10 @@ export class ShipProps {
         }
 
         let progress = 0;
+        const engine = this._scene.getEngine();
         const animObserver = this._scene.onBeforeRenderObservable.add(() => {
-            progress += 0.045;
+            const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
+            progress += dt * 2.7;
             const t = Math.min(1, progress);
             // Smooth ease out cubic
             const ease = 1 - Math.pow(1 - t, 3);
@@ -667,8 +678,10 @@ export class ShipProps {
         const startRot = new BABYLON.Vector3(0.25, -0.35, 0.15);
 
         let t = 0;
+        const engine = this._scene.getEngine();
         const slashObserver = this._scene.onBeforeRenderObservable.add(() => {
-            t += 0.06;
+            const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
+            t += dt * 3.6;
             if (t <= 0.4) {
                 // Wind up
                 const p = t / 0.4;
@@ -728,8 +741,10 @@ export class ShipProps {
             const targetScaleY = this.baseSailScaling.y * billow;
             const startScaleY = this.sailsMesh.scaling.y;
             let p = 0;
+            const engine = this._scene.getEngine();
             const sailObserver = this._scene.onBeforeRenderObservable.add(() => {
-                p += 0.05;
+                const dt = Math.min(0.05, engine.getDeltaTime() / 1000 || 0.016);
+                p += dt * 3.0;
                 const ease = Math.min(1, p);
                 this.sailsMesh!.scaling.y = BABYLON.Scalar.Lerp(startScaleY, targetScaleY, ease);
                 if (ease >= 1) {
@@ -743,24 +758,29 @@ export class ShipProps {
     private _windThrottleTimer = 0;
 
     /**
-     * Updates dynamic wind wave air ripples across the sail canvas (throttled for peak FPS)
+     * Updates dynamic wind wave air ripples across the sail canvas
      */
     private _updateSailWindWave(): void {
         if (!this.windWaveEnabled || !this.sailsMesh || !this._baseSailPositions || !this._animatedSailPositions) return;
 
         const engine = this._scene.getEngine();
         const dt = Math.min(0.04, engine.getDeltaTime() / 1000 || 0.016);
-        this._windThrottleTimer += dt;
-        if (this._windThrottleTimer < 0.024) return; // ~40 FPS cloth ripple
-        this._windTime += this._windThrottleTimer * this.windWaveSpeed;
-        this._windThrottleTimer = 0;
-
-        const t = this._windTime;
-        const amp = this.windWaveIntensity;
-
         const base = this._baseSailPositions;
         const anim = this._animatedSailPositions;
         const len = base.length;
+
+        // Only throttle CPU vertex updates if the sail mesh is unusually dense
+        if (len > 15000) {
+            this._windThrottleTimer += dt;
+            if (this._windThrottleTimer < 0.024) return;
+            this._windTime += this._windThrottleTimer * this.windWaveSpeed;
+            this._windThrottleTimer = 0;
+        } else {
+            this._windTime += dt * this.windWaveSpeed;
+        }
+
+        const t = this._windTime;
+        const amp = this.windWaveIntensity;
 
         for (let i = 0; i < len; i += 3) {
             const x = base[i];

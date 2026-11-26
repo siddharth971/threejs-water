@@ -44,7 +44,7 @@ export class SkyBox {
         scene.meshes.splice(0, 0, this._skybox);
 
         this._skyboxObserver = scene.onBeforeRenderObservable.add(() => {
-            this._skybox.position = scene.activeCameras?.[0].position ?? scene.activeCamera!.position;
+            this.syncPosition();
         });
 
         if (useProcedural) {
@@ -82,6 +82,13 @@ export class SkyBox {
         }
 
         return ret;
+    }
+
+    public syncPosition(): void {
+        const activeCam = this._scene.activeCameras?.[0] ?? this._scene.activeCamera;
+        if (activeCam) {
+            this._skybox.position.copyFrom(activeCam.globalPosition);
+        }
     }
 
     public dispose(): void {

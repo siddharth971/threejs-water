@@ -13,11 +13,16 @@ async function createEngine(): Promise<BABYLON.Engine> {
     const webGPUSupported = await (BABYLON.WebGPUEngine as any).IsSupportedAsync;
     let engine: BABYLON.Engine;
     if (webGPUSupported) {
-        const webGPUEngine = new BABYLON.WebGPUEngine(document.getElementById("renderCanvas") as HTMLCanvasElement);
+        const webGPUEngine = new BABYLON.WebGPUEngine(document.getElementById("renderCanvas") as HTMLCanvasElement, {
+            antialias: true,
+            powerPreference: "high-performance",
+        });
         await webGPUEngine.initAsync();
         engine = webGPUEngine as any;
     } else {
-        engine = new BABYLON.Engine(document.getElementById("renderCanvas") as HTMLCanvasElement, true);
+        engine = new BABYLON.Engine(document.getElementById("renderCanvas") as HTMLCanvasElement, true, {
+            powerPreference: "high-performance",
+        });
     }
 
     // Disable Babylon default loading screen entirely

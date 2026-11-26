@@ -14,6 +14,8 @@ export class WavesGenerator {
     private _cascades: WavesCascade[];
     private _displacementMap: BABYLON.Nullable<Uint16Array>;
     private _wavesSettings: WavesSettings;
+    private _isReadingDisplacement = false;
+    private _disposed = false;
 
     public getCascade(num: number) {
         return this._cascades[num];
@@ -30,7 +32,7 @@ export class WavesGenerator {
     constructor(size: number, wavesSettings: WavesSettings, scene: BABYLON.Scene, rttDebug: RTTDebug, noise: BABYLON.Nullable<ArrayBuffer>) {
         this._engine = scene.getEngine() as BABYLON.WebGPUEngine;
         this._rttDebug = rttDebug;
-        this._startTime = new Date().getTime() / 1000;
+        this._startTime = performance.now() / 1000;
         this._displacementMap = null;
         this._wavesSettings = wavesSettings;
 
@@ -68,15 +70,18 @@ export class WavesGenerator {
         }
     }
 
-    public update(): void {
-        const time = (new Date().getTime() / 1000) - this._startTime;
+    public update(readDisplacement = true): void {
+        const time = (performance.now() / 1000) - this._startTime;
         for (let i = 0; i < this._cascades.length; ++i) {
             this._cascades[i].calculateWavesAtTime(time);
         }
-        this._getDisplacementMap();
+        if (readDisplacement) {
+            this._getDisplacementMap();
+        }
     }
 
     public dispose(): void {
+        this._disposed = true;
         for (let i = 0; i < this._cascades.length; ++i) {
             this._cascades[i].dispose();
         }
@@ -85,9 +90,29 @@ export class WavesGenerator {
     }
 
     private _getDisplacementMap(): void {
-        this._cascades[0].displacement.readPixels(undefined, undefined, undefined, undefined, true)?.then((buffer: ArrayBufferView) => {
-            this._displacementMap = new Uint16Array(buffer.buffer);
-        });
+        // Prevent overlapping GPU->CPU readbacks while keeping noDataConversion=true (raw half-float Uint16)
+        if (this._isReadingDisplacement) {
+            return;
+        }
+        const readPromise = this._cascades[0].displacement.readPixels(undefined, undefined, undefined, undefined, true);
+        if (!readPromise) {
+            return;
+        }
+        this._isReadingDisplacement = true;
+        readPromise
+            .then((buffer: ArrayBufferView) => {
+                if (!this._disposed) {
+                    this._displacementMap = buffer instanceof Uint16Array
+                        ? buffer
+                        : new Uint16Array(buffer.buffer, buffer.byteOffset, buffer.byteLength >> 1);
+                }
+            })
+            .catch(() => {
+                // Ignore readback errors during resize or disposal
+            })
+            .finally(() => {
+                this._isReadingDisplacement = false;
+            });
     }
 
     private _normalRandom(): number {

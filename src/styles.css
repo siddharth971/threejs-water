@@ -176,146 +176,107 @@ body {
 }
 
 /* =========================================================
-   Ship Interaction Card (ASCII Box Style)
-   ┌──────────────────────┐
-   │       CANNON         │
-   │                      │
-   │      Press F         │
-   │     Use Cannon       │
-   └──────────────────────┘
+   Ship Interaction Prompt (Compact Bottom-Right HUD Pill)
    ========================================================= */
 
 #ship-interaction-card {
   position: absolute;
-  top: 60%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.92);
+  bottom: 20px;
+  right: 24px;
+  transform: translateY(10px) scale(0.97);
   pointer-events: none;
   z-index: 30;
   opacity: 0;
-  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.card-ascii-box {
-  position: relative;
-  background: rgba(10, 22, 38, 0.90);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 18px 32px;
-  border-radius: 6px;
-  border: 1px solid rgba(251, 191, 36, 0.55);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 25px rgba(245, 158, 11, 0.25), inset 0 0 16px rgba(245, 158, 11, 0.1);
-  min-width: 260px;
-  text-align: center;
+#ship-interaction-card.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
-.card-corner-tag {
-  position: absolute;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 19px;
-  font-weight: 900;
-  color: #fbbf24;
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(251, 191, 36, 0.85);
-  user-select: none;
-}
-.card-corner-tag.c-tl { top: -4px; left: 3px; }
-.card-corner-tag.c-tr { top: -4px; right: 3px; }
-.card-corner-tag.c-bl { bottom: -4px; left: 3px; }
-.card-corner-tag.c-br { bottom: -4px; right: 3px; }
-
-.card-border-line-top {
-  position: absolute;
-  top: 0;
-  left: 20px;
-  right: 20px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #fbbf24 20%, #fbbf24 80%, transparent);
-}
-.card-border-line-bottom {
-  position: absolute;
-  bottom: 0;
-  left: 20px;
-  right: 20px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #fbbf24 20%, #fbbf24 80%, transparent);
-}
-
-.card-body-content {
+.interact-prompt-pill {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
+  background: rgba(10, 22, 38, 0.80);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(245, 158, 11, 0.16);
+  max-width: 340px;
 }
 
-.card-headline-title {
-  font-family: 'Outfit', sans-serif;
-  font-weight: 800;
-  font-size: 20px;
-  letter-spacing: 2px;
-  color: #fef08a;
-  text-shadow: 0 0 14px rgba(251, 191, 36, 0.6), 0 2px 4px rgba(0, 0, 0, 0.8);
-  text-transform: uppercase;
-}
-
-.card-ornament-sep {
-  width: 70px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.65), transparent);
-  margin: 2px 0 4px 0;
-}
-
-.card-press-key-row {
-  display: inline-flex;
+.interact-key-badge {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(245, 158, 11, 0.16);
-  border: 1px solid rgba(251, 191, 36, 0.45);
-  padding: 4px 14px;
-  border-radius: 9999px;
-  box-shadow: 0 0 14px rgba(245, 158, 11, 0.3);
-  margin-bottom: 2px;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .card-key-cap {
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 14px;
   color: #1e1b18;
   background: #fbbf24;
-  border-radius: 4px;
-  padding: 2px 8px;
-  box-shadow: 0 0 8px rgba(251, 191, 36, 0.85);
-  animation: key-pulse 1.8s infinite ease-in-out;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.75);
 }
 
-@keyframes key-pulse {
-  0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.08); filter: brightness(1.2); }
+.interact-prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-.card-press-label {
+.interact-prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-headline-title {
   font-family: 'Outfit', sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  color: #fef08a;
-  letter-spacing: 0.5px;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: uppercase;
 }
 
 .card-action-verb {
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   color: #ffffff;
-  letter-spacing: 0.4px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.2px;
 }
 
 .card-action-sub {
   font-size: 11px;
   color: #94a3b8;
-  max-width: 240px;
-  line-height: 1.35;
+  line-height: 1.3;
+}
+
+@media (max-width: 960px) {
+  #ship-interaction-card {
+    bottom: 68px;
+    right: 16px;
+  }
 }
 
 /* Toast Notifications (Top-Right) */
@@ -377,7 +338,8 @@ body {
 }
 
 /* Bottom Navigation Controls Bar */
-#deck-nav-bar {
+#deck-nav-bar,
+#swim-nav-bar {
   position: absolute;
   bottom: 20px;
   left: 20px;
@@ -392,6 +354,11 @@ body {
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   pointer-events: none;
+}
+
+#swim-nav-bar {
+  display: none;
+  border-color: rgba(56, 189, 248, 0.35);
 }
 
 .nav-item {
@@ -433,6 +400,18 @@ body {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 40px rgba(245, 158, 11, 0.2);
+}
+
+/* Underwater Blue-Teal Immersion Overlay */
+#underwater-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 21;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  background: radial-gradient(circle at center, rgba(14, 116, 144, 0.16) 25%, rgba(6, 78, 108, 0.42) 85%);
+  box-shadow: inset 0 0 90px rgba(4, 47, 68, 0.55);
 }
 
 
@@ -536,7 +515,6 @@ body {
   border-radius: 3px;
   box-shadow: 0 0 10px #fbbf24;
   transform: translateX(-50%);
-  transition: left 0.1s ease-out;
 }
 
 .rudder-marker {
@@ -750,7 +728,6 @@ body {
   height: 100%;
   background: linear-gradient(90deg, #f59e0b, #10b981);
   box-shadow: 0 0 8px #10b981;
-  transition: width 0.05s linear;
 }
 
 .cannon-hints {
@@ -851,7 +828,6 @@ body {
   height: 100%;
   background: linear-gradient(90deg, #0284c7, #38bdf8);
   box-shadow: 0 0 10px #38bdf8;
-  transition: width 0.1s ease-out;
 }
 
 .sail-val {

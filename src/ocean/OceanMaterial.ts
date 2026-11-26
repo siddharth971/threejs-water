@@ -11,6 +11,7 @@ export class OceanMaterial {
     private _foamTexture: BABYLON.Texture;
     private _startTime: number;
     private _horizonColor: BABYLON.Vector3;
+    private _isUnderwater = false;
 
     constructor(depthRenderer: BABYLON.DepthRenderer, scene: BABYLON.Scene) {
         this._wavesGenerator = null as any;
@@ -18,7 +19,7 @@ export class OceanMaterial {
         this._scene = scene;
         this._camera = scene.activeCameras?.[0] ?? scene.activeCamera!;
         this._foamTexture = new BABYLON.Texture(foamPicture, this._scene);
-        this._startTime = new Date().getTime() / 1000;
+        this._startTime = performance.now() / 1000;
         this._horizonColor = new BABYLON.Vector3(0.55, 0.68, 0.80);
     }
 
@@ -28,6 +29,10 @@ export class OceanMaterial {
 
     public setHorizonColor(color: BABYLON.Vector3): void {
         this._horizonColor.copyFrom(color);
+    }
+
+    public setUnderwater(isUnderwater: boolean): void {
+        this._isUnderwater = isUnderwater;
     }
 
     public readMaterialParameter(mat: BABYLON.PBRCustomMaterial, name: string): any {
@@ -75,6 +80,7 @@ export class OceanMaterial {
             mat.metallic = 0;
             mat.roughness = 0.311;
             mat.forceIrradianceInFragment = true;
+            mat.backFaceCulling = true;
 
             const color = new BABYLON.Vector3(0.011126082368383245, 0.05637409755197975, 0.09868919754109445);
 
@@ -114,6 +120,7 @@ export class OceanMaterial {
             mat.AddUniform("_CameraData", "vec4", new BABYLON.Vector4(this._camera.minZ, this._camera.maxZ, this._camera.maxZ - this._camera.minZ, 0));
             mat.AddUniform("_FoamTexture", "sampler2D", this._foamTexture);
             mat.AddUniform("uHorizonColor", "vec3", this._horizonColor);
+            mat.AddUniform("uIsUnderwater", "float", 0.0);
 
             const cascades = [];
             if (useMid) {
@@ -220,6 +227,10 @@ export class OceanMaterial {
                 surfaceAlbedo = mix(vec3(0.0), _FoamColor, jacobian);
 
                 vec3 viewDir = normalize(vViewVector);
+                float isBackside = step(0.5, uIsUnderwater) * step(dot(normalW, viewDir), 0.0);
+                if (isBackside > 0.5) {
+                    normalW = -normalW;
+                }
                 vec3 H = normalize(-normalW + lightDirection);
                 float ViewDotH = pow5(saturate(dot(viewDir, -H))) * 30.0 * _SSSStrength;
                 vec3 color = mix(_Color, saturate(_Color + _SSSColor.rgb * ViewDotH * vLodScales.w), vLodScales.z);
@@ -235,25 +246,33 @@ export class OceanMaterial {
             `);
 
             mat.Fragment_Before_FinalColorComposition(`
-                finalEmissive = mix(color * (1.0 - fresnel), vec3(0.0), jacobian);
+                vec3 waterBodyColor = mix(color * (1.0 - fresnel), vec3(0.03, 0.24, 0.36), uIsUnderwater * 0.65);
+                finalEmissive = mix(waterBodyColor, vec3(0.0), jacobian);
             `);
 
             mat.Fragment_Before_FragColor(`
                 float distToCam = length(vViewVector);
                 float horizonMist = smoothstep(120.0, 2500.0, distToCam);
-                finalColor.rgb = mix(finalColor.rgb, uHorizonColor, horizonMist * 0.95);
+                vec3 mistTarget = mix(uHorizonColor, vec3(0.02, 0.20, 0.32), uIsUnderwater);
+                float uwMist = uIsUnderwater * clamp(distToCam / 35.0, 0.0, 0.92);
+                finalColor.rgb = mix(finalColor.rgb, mistTarget, max(horizonMist * 0.95, uwMist));
             `);
 
             mat.onBindObservable.add(() => {
-                const time = ((new Date().getTime() / 1000) - this._startTime) / 10;
+                const effect = mat.getEffect();
+                if (!effect) {
+                    return;
+                }
+                const time = ((performance.now() / 1000) - this._startTime) / 10;
 
-                mat.getEffect()?.setVector3("_WorldSpaceCameraPos", this._camera.position);
-                mat.getEffect()?.setVector3("uHorizonColor", this._horizonColor);
-                mat.getEffect()?.setTexture("_Turbulence_c0", this._wavesGenerator.getCascade(0).turbulence);
-                mat.getEffect()?.setTexture("_Turbulence_c1", this._wavesGenerator.getCascade(1).turbulence);
-                mat.getEffect()?.setTexture("_Turbulence_c2", this._wavesGenerator.getCascade(2).turbulence);
-                mat.getEffect()?.setFloat("_Time", time);
-                mat.getEffect()?.setVector3("lightDirection", (this._scene.lights[0] as BABYLON.DirectionalLight).direction);
+                effect.setVector3("_WorldSpaceCameraPos", this._camera.globalPosition);
+                effect.setVector3("uHorizonColor", this._horizonColor);
+                effect.setFloat("uIsUnderwater", this._isUnderwater ? 1.0 : 0.0);
+                effect.setTexture("_Turbulence_c0", this._wavesGenerator.getCascade(0).turbulence);
+                effect.setTexture("_Turbulence_c1", this._wavesGenerator.getCascade(1).turbulence);
+                effect.setTexture("_Turbulence_c2", this._wavesGenerator.getCascade(2).turbulence);
+                effect.setFloat("_Time", time);
+                effect.setVector3("lightDirection", (this._scene.lights[0] as BABYLON.DirectionalLight).direction);
             });
 
             return new Promise((resolve) => {

@@ -10,6 +10,8 @@ export interface MeshBuoyancy {
     yOffset: number;
     spaceCoordinates: number;
     initQuaternion: BABYLON.Quaternion;
+    smoothedY: number;
+    hasSampledHeight: boolean;
 }
 
 export class Buoyancy {
@@ -20,6 +22,8 @@ export class Buoyancy {
     private _meshes: MeshBuoyancy[];
     private _numSteps: number;
     private _attenuation: number;
+    private readonly _waveTiltQuat = new BABYLON.Quaternion();
+    private readonly _targetRotQuat = new BABYLON.Quaternion();
 
     public enabled = true;
 
@@ -38,7 +42,15 @@ export class Buoyancy {
     }
 
     public addMesh(mesh: BABYLON.TransformNode, frame: BuoyancyFrame, yOffset = 0, spaceCoordinates = 0): void {
-        this._meshes.push({ mesh, frame, yOffset, spaceCoordinates, initQuaternion: mesh.rotationQuaternion!.clone() });
+        this._meshes.push({
+            mesh,
+            frame,
+            yOffset,
+            spaceCoordinates,
+            initQuaternion: mesh.rotationQuaternion!.clone(),
+            smoothedY: mesh.position.y,
+            hasSampledHeight: false,
+        });
     }
 
     public rotateMeshYaw(mesh: BABYLON.TransformNode, deltaYaw: number): void {
@@ -69,63 +81,86 @@ export class Buoyancy {
         this._numSteps = val;
     }
 
-    public update(): void {
+    public update(dt = 1 / 60): void {
         if (!this.enabled) {
             return;
         }
 
+        const clampedDt = Math.min(0.05, Math.max(0.001, dt));
         for (let i = 0; i < this._meshes.length; ++i) {
-            this._updateMesh(this._meshes[i]);
+            this._updateMesh(this._meshes[i], clampedDt);
         }
     }
 
     public getWaterHeight(position: BABYLON.Vector3): number {
         const tmp = BABYLON.TmpVectors.Vector3[0];
+        const steps = Math.max(1, this._numSteps);
 
         this._getWaterDisplacement(position, tmp);
-        position.subtractToRef(tmp, tmp);
-        this._getWaterDisplacement(position, tmp);
-        position.subtractToRef(tmp, tmp);
-        this._getWaterDisplacement(position, tmp);
-        position.subtractToRef(tmp, tmp);
-        this._getWaterDisplacement(position, tmp);
+        for (let i = 1; i < steps; ++i) {
+            position.subtractToRef(tmp, tmp);
+            this._getWaterDisplacement(position, tmp);
+        }
 
-        return tmp.y;
+        return Number.isFinite(tmp.y) ? tmp.y : 0;
     }
 
-    private _updateMesh(meshBuoyancy: MeshBuoyancy): void {
+    private _updateMesh(meshBuoyancy: MeshBuoyancy, dt: number): void {
         const tmp = BABYLON.TmpVectors.Vector3[5];
         const tmp2 = BABYLON.TmpVectors.Vector3[6];
         const tmp3 = BABYLON.TmpVectors.Vector3[7];
 
         const { mesh, frame, yOffset, spaceCoordinates, initQuaternion } = meshBuoyancy;
+        const worldMatrix = mesh.getWorldMatrix();
 
-        BABYLON.Vector3.TransformCoordinatesToRef(frame.v1, mesh.getWorldMatrix(), tmp);
+        BABYLON.Vector3.TransformCoordinatesToRef(frame.v1, worldMatrix, tmp);
 
         const y = this.getWaterHeight(tmp);
+        if (!Number.isFinite(y)) {
+            return;
+        }
+        const targetY = y + yOffset;
 
-        mesh.position.y = y + yOffset;
+        if (!meshBuoyancy.hasSampledHeight && this._displacementMap) {
+            meshBuoyancy.smoothedY = targetY;
+            meshBuoyancy.hasSampledHeight = true;
+        } else {
+            const ySmooth = 1.0 - Math.exp(-8.5 * dt);
+            meshBuoyancy.smoothedY = BABYLON.Scalar.Lerp(meshBuoyancy.smoothedY, targetY, ySmooth);
+        }
+
+        mesh.position.y = meshBuoyancy.smoothedY;
 
         if (frame.v2 && frame.v3) {
-            BABYLON.Vector3.TransformCoordinatesToRef(frame.v2, mesh.getWorldMatrix(), tmp2);
-            BABYLON.Vector3.TransformCoordinatesToRef(frame.v3, mesh.getWorldMatrix(), tmp3);
+            BABYLON.Vector3.TransformCoordinatesToRef(frame.v2, worldMatrix, tmp2);
+            BABYLON.Vector3.TransformCoordinatesToRef(frame.v3, worldMatrix, tmp3);
 
             const yForward = this.getWaterHeight(tmp2);
             const yRight = this.getWaterHeight(tmp3);
 
-            const distForward = Math.max(0.5, BABYLON.Vector3.Distance(new BABYLON.Vector3(tmp.x, 0, tmp.z), new BABYLON.Vector3(tmp2.x, 0, tmp2.z)));
-            const distRight = Math.max(0.5, BABYLON.Vector3.Distance(new BABYLON.Vector3(tmp.x, 0, tmp.z), new BABYLON.Vector3(tmp3.x, 0, tmp3.z)));
+            const dxForward = tmp2.x - tmp.x;
+            const dzForward = tmp2.z - tmp.z;
+            const distForward = Math.max(0.5, Math.hypot(dxForward, dzForward));
+
+            const dxRight = tmp3.x - tmp.x;
+            const dzRight = tmp3.z - tmp.z;
+            const distRight = Math.max(0.5, Math.hypot(dxRight, dzRight));
 
             const pitch = Math.atan2(yForward - y, distForward) * this._attenuation;
             const roll = Math.atan2(yRight - y, distRight) * this._attenuation;
 
-            const waveTilt = spaceCoordinates === 0 
-                ? BABYLON.Quaternion.FromEulerAngles(-pitch, roll, 0)
-                : BABYLON.Quaternion.FromEulerAngles(-pitch, 0, roll);
+            if (spaceCoordinates === 0) {
+                BABYLON.Quaternion.FromEulerAnglesToRef(-pitch, roll, 0, this._waveTiltQuat);
+            } else {
+                BABYLON.Quaternion.FromEulerAnglesToRef(-pitch, 0, roll, this._waveTiltQuat);
+            }
 
-            const targetRot = initQuaternion.multiply(waveTilt);
-            BABYLON.Quaternion.SlerpToRef(mesh.rotationQuaternion!, targetRot, 0.08, mesh.rotationQuaternion!);
+            initQuaternion.multiplyToRef(this._waveTiltQuat, this._targetRotQuat);
+            const rotSmooth = 1.0 - Math.exp(-5.0 * dt);
+            BABYLON.Quaternion.SlerpToRef(mesh.rotationQuaternion!, this._targetRotQuat, rotSmooth, mesh.rotationQuaternion!);
         }
+
+        mesh.computeWorldMatrix(true);
     }
 
     private _getWaterDisplacement(position: BABYLON.Vector3, result: BABYLON.Vector3): void {

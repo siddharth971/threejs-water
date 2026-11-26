@@ -5,6 +5,7 @@
 export class ShipAudio {
     private _ctx: AudioContext | null = null;
     private _ambientGain: GainNode | null = null;
+    private _ambientFilter: BiquadFilterNode | null = null;
     private _initialized = false;
 
     private _initContext(): boolean {
@@ -68,9 +69,89 @@ export class ShipAudio {
             whiteNoise.start();
 
             this._ambientGain = gain;
+            this._ambientFilter = filter;
         } catch {
             // Audio context might be restricted before user gesture
         }
+    }
+
+    /**
+     * Muffles ambient sea audio when submerged underwater
+     */
+    public setUnderwater(isUnderwater: boolean): void {
+        if (!this._ctx || !this._ambientFilter || !this._ambientGain) return;
+        const now = this._ctx.currentTime;
+        this._ambientFilter.frequency.setTargetAtTime(isUnderwater ? 210 : 450, now, 0.08);
+        this._ambientGain.gain.setTargetAtTime(isUnderwater ? 0.12 : 0.08, now, 0.08);
+    }
+
+    /**
+     * Ocean entry splash when diving or jumping overboard
+     */
+    public playWaterSplash(): void {
+        if (!this._initContext() || !this._ctx) return;
+        const t = this._ctx.currentTime;
+
+        const bufferSize = Math.floor(this._ctx.sampleRate * 0.85);
+        const noiseBuffer = this._ctx.createBuffer(1, bufferSize, this._ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = this._ctx.createBufferSource();
+        noise.buffer = noiseBuffer;
+
+        const filter = this._ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(950, t);
+        filter.frequency.exponentialRampToValueAtTime(240, t + 0.75);
+        filter.Q.value = 0.7;
+
+        const gain = this._ctx.createGain();
+        gain.gain.setValueAtTime(0.01, t);
+        gain.gain.linearRampToValueAtTime(0.45, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this._ctx.destination);
+        noise.start(t);
+        noise.stop(t + 0.85);
+    }
+
+    /**
+     * Soft water paddle stroke while swimming
+     */
+    public playSwimStroke(): void {
+        if (!this._initContext() || !this._ctx) return;
+        const t = this._ctx.currentTime;
+
+        const bufferSize = Math.floor(this._ctx.sampleRate * 0.28);
+        const noiseBuffer = this._ctx.createBuffer(1, bufferSize, this._ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = this._ctx.createBufferSource();
+        noise.buffer = noiseBuffer;
+
+        const filter = this._ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(520 + Math.random() * 140, t);
+        filter.frequency.exponentialRampToValueAtTime(180, t + 0.25);
+
+        const gain = this._ctx.createGain();
+        gain.gain.setValueAtTime(0.005, t);
+        gain.gain.linearRampToValueAtTime(0.14, t + 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.27);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this._ctx.destination);
+        noise.start(t);
+        noise.stop(t + 0.28);
     }
 
     /**
