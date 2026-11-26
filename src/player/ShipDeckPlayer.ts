@@ -1679,6 +1679,7 @@ export class ShipDeckPlayer {
             <div class="nav-item"><span class="nav-key">[F]</span> Interact</div>
             <div class="nav-item"><span class="nav-key">[Space]</span> Jump / Dive Overboard</div>
             <div class="nav-item"><span class="nav-key">[C]</span> View (1st/3rd/Free)</div>
+            <div class="nav-item"><span class="nav-key">[T]</span> Sky</div>
         `;
         document.body.appendChild(deckBar);
         this._deckNavBar = deckBar;
@@ -1691,6 +1692,7 @@ export class ShipDeckPlayer {
             <div class="nav-item"><span class="nav-key">[Space]</span> Surface</div>
             <div class="nav-item"><span class="nav-key">[E / Ctrl]</span> Dive</div>
             <div class="nav-item"><span class="nav-key">[C]</span> View (1st/3rd/Free)</div>
+            <div class="nav-item"><span class="nav-key">[T]</span> Sky</div>
         `;
         document.body.appendChild(swimBar);
         this._swimNavBar = swimBar;

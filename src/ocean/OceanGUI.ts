@@ -66,15 +66,10 @@ export class OceanGUI {
         });
     }
 
-    private _initialize(hasProceduralSky: boolean): void {
+    private _initialize(_hasProceduralSky: boolean): void {
         this._makeMenuPresets();
         this._makeMenuGeneral();
-
-        if (hasProceduralSky) {
-            this._makeMenuProceduralSky();
-        } else {
-            this._makeMenuSkybox();
-        }
+        this._makeMenuSky();
  
         this._makeMenuWavesGenerator();
         this._makeMenuOceanGeometry();
@@ -103,6 +98,7 @@ export class OceanGUI {
         const paramKeys = [
             "size", "envIntensity", "lightIntensity", "enableShadows", "enableGlow", "useZQSD", "showDebugRTT",
             "ship_sailHeight", "ship_sailElevation", "ship_windWaveSpeed", "ship_windWaveIntensity",
+            "sky_preset", "sky_azimuth", "sky_cloudSpeed", "sky_cloudCoverage",
             "procSky_inclination", "procSky_azimuth", "procSky_luminance", "procSky_turbidity", "procSky_rayleigh", "procSky_mieCoefficient", "procSky_mieDirectionalG",
             "skybox_lightColor", "skybox_directionX", "skybox_directionY", "skybox_directionZ",
             "waves_g", "waves_depth", "waves_lambda",
@@ -218,7 +214,7 @@ export class OceanGUI {
         }, duration);
     }
 
-    private _addList(menu: any, params: any, name: string, friendlyName: string, list: any[]): void {
+    private _addList(menu: any, params: any, name: string, friendlyName: string, list: any[] | Record<string, any>): void {
         const ctrl = menu.add(params, name, list)
             .name(friendlyName)
             .onChange((value: any) => {
@@ -278,44 +274,37 @@ export class OceanGUI {
         general.open();
     }
 
-    private _makeMenuProceduralSky(): void {
+    private _makeMenuSky(): void {
         const params = {
+            sky_preset: this._paramRead("sky_preset"),
+            sky_azimuth: this._paramRead("sky_azimuth"),
+            sky_cloudSpeed: this._paramRead("sky_cloudSpeed"),
+            sky_cloudCoverage: this._paramRead("sky_cloudCoverage"),
             procSky_inclination: this._paramRead("procSky_inclination"),
-            procSky_azimuth: this._paramRead("procSky_azimuth"),
             procSky_luminance: this._paramRead("procSky_luminance"),
             procSky_turbidity: this._paramRead("procSky_turbidity"),
             procSky_rayleigh: this._paramRead("procSky_rayleigh"),
             procSky_mieCoefficient: this._paramRead("procSky_mieCoefficient"),
             procSky_mieDirectionalG: this._paramRead("procSky_mieDirectionalG"),
         };
-        
-        const proceduralSky = this._gui.addFolder("Sky");
 
-        this._addSlider(proceduralSky, params, "procSky_inclination", "Inclination", -0.5, 0.5, 0.001);
-        this._addSlider(proceduralSky, params, "procSky_azimuth", "Azimuth", 0.0, 1, 0.001);
-        this._addSlider(proceduralSky, params, "procSky_luminance", "Luminance", 0.001, 1, 0.001);
-        this._addSlider(proceduralSky, params, "procSky_turbidity", "Turbidity", 0.1, 100, 0.1);
-        this._addSlider(proceduralSky, params, "procSky_rayleigh", "Rayleigh", 0.1, 10, 0.1);
-        this._addSlider(proceduralSky, params, "procSky_mieCoefficient", "Mie Coefficient", 0.0, 0.1, 0.0001);
-        this._addSlider(proceduralSky, params, "procSky_mieDirectionalG", "Mie DirectionalG", 0.0, 1, 0.01);
+        const skyFolder = this._gui.addFolder("🌤️ Real Sky & Clouds");
+        this._addList(skyFolder, params, "sky_preset", "Sky Mode", {
+            "Real Sky: Day Clouds": "day",
+            "Real Sky: Golden Sunset": "sunset",
+            "Dynamic Sun & Clouds": "procedural",
+        });
+        this._addSlider(skyFolder, params, "sky_azimuth", "Sky Azimuth", 0.0, 1.0, 0.005);
+        this._addSlider(skyFolder, params, "sky_cloudSpeed", "Cloud Wind Speed", 0.0, 3.0, 0.05);
+        this._addSlider(skyFolder, params, "sky_cloudCoverage", "Cloud Coverage", 0.0, 1.0, 0.01);
+        this._addSlider(skyFolder, params, "procSky_inclination", "Sun Elevation (Dyn)", 0.0, 0.52, 0.002);
+        this._addSlider(skyFolder, params, "procSky_luminance", "Luminance (Dyn)", 0.2, 2.0, 0.02);
+        this._addSlider(skyFolder, params, "procSky_turbidity", "Turbidity (Dyn)", 1.0, 20.0, 0.1);
+        this._addSlider(skyFolder, params, "procSky_rayleigh", "Rayleigh (Dyn)", 0.2, 5.0, 0.05);
+        this._addSlider(skyFolder, params, "procSky_mieCoefficient", "Mie Glow (Dyn)", 0.0, 0.05, 0.0005);
+        this._addSlider(skyFolder, params, "procSky_mieDirectionalG", "Mie Focus (Dyn)", 0.1, 0.96, 0.01);
 
-        proceduralSky.open();
-    }
-
-    private _makeMenuSkybox(): void {
-        const params = {
-            skybox_lightColor: this._paramRead("skybox_lightColor"),
-            skybox_directionX: this._paramRead("skybox_directionX"),
-            skybox_directionY: this._paramRead("skybox_directionY"),
-            skybox_directionZ: this._paramRead("skybox_directionZ"),
-        };
-        
-        const skybox = this._gui.addFolder("Sky");
-
-        this._addColor(skybox, params, "skybox_lightColor", "Light color");
-        this._addSlider(skybox, params, "skybox_directionX", "Light dir X", -10, 10, 0.001);
-        this._addSlider(skybox, params, "skybox_directionY", "Light dir Y", -10, -0.01, 0.001);
-        this._addSlider(skybox, params, "skybox_directionZ", "Light dir Z", -10, 10, 0.001);
+        skyFolder.open();
     }
 
     private _makeMenuWavesGenerator(): void {

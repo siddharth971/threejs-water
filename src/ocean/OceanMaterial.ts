@@ -252,10 +252,10 @@ export class OceanMaterial {
 
             mat.Fragment_Before_FragColor(`
                 float distToCam = length(vViewVector);
-                float horizonMist = smoothstep(120.0, 2500.0, distToCam);
+                float horizonMist = smoothstep(180.0, 2600.0, distToCam);
                 vec3 mistTarget = mix(uHorizonColor, vec3(0.02, 0.20, 0.32), uIsUnderwater);
                 float uwMist = uIsUnderwater * clamp(distToCam / 35.0, 0.0, 0.92);
-                finalColor.rgb = mix(finalColor.rgb, mistTarget, max(horizonMist * 0.95, uwMist));
+                finalColor.rgb = mix(finalColor.rgb, mistTarget, max(horizonMist * 0.88, uwMist));
             `);
 
             mat.onBindObservable.add(() => {

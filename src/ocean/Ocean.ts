@@ -2,7 +2,7 @@ import { RTTDebug } from '../utils/RTTDebug';
 import { Buoyancy } from './Buoyancy';
 import { WavesSettings } from '../waves/WavesSettings';
 import { WavesGenerator } from '../waves/WavesGenerator';
-import { SkyBox } from './SkyBox';
+import { SkyBox, SkyPreset } from './SkyBox';
 import { OceanMaterial } from './OceanMaterial';
 import { OceanGeometry } from './OceanGeometry';
 import { OceanGUI } from './OceanGUI';
@@ -25,6 +25,7 @@ export class Ocean {
     private _fxaa: BABYLON.Nullable<BABYLON.FxaaPostProcess>;
     private _size: number;
     private _gui: OceanGUI | null;
+    private _loadingGui = false;
     private _skybox: SkyBox;
     private _oceanMaterial: OceanMaterial;
     private _oceanGeometry: OceanGeometry;
@@ -62,7 +63,7 @@ export class Ocean {
         this._oceanGeometry = null as any;
         this._wavesGenerator = null;
         this._useZQSD = true;
-        this._useProceduralSky = true;
+        this._useProceduralSky = false;
         this._lightDirection = new BABYLON.Vector3(0, -1, -0.25);
         this._shadowGenerator = null as any;
         this._lightBuoy = null as any;
@@ -121,7 +122,7 @@ export class Ocean {
         this._rttDebug = new RTTDebug(scene, engine, 32);
         this._rttDebug.show(false);
 
-        scene.environmentIntensity = 1.35;
+        scene.environmentIntensity = 0.95;
 
         scene.activeCameras = [this._camera, this._rttDebug.camera];
 
@@ -139,7 +140,7 @@ export class Ocean {
         this._depthRenderer.getDepthMap().renderList = [];
 
         this._light = new BABYLON.DirectionalLight("light", this._lightDirection, scene);
-        this._light.intensity = 5;
+        this._light.intensity = 3.6;
         this._light.diffuse = new BABYLON.Color3(1, 1, 1);
         this._light.shadowMinZ = 0;
         this._light.shadowMaxZ = 40;
@@ -149,7 +150,7 @@ export class Ocean {
         this._shadowGenerator.usePercentageCloserFiltering = true;
         this._shadowGenerator.bias = 0.005;
 
-        this._skybox = new SkyBox(this._useProceduralSky, scene);
+        this._skybox = new SkyBox("day", scene);
         this._buoyancy = new Buoyancy(this._size, 3, 0.2);
         this._oceanMaterial = new OceanMaterial(this._depthRenderer, this._scene);
         this._oceanGeometry = new OceanGeometry(this._oceanMaterial, this._camera, this._scene);
@@ -171,11 +172,39 @@ export class Ocean {
                 case BABYLON.KeyboardEventTypes.KEYDOWN:
                     if (kbInfo.event.key === "Shift") {
                         this._camera.speed = 10;
+                    } else if (kbInfo.event.key?.toLowerCase() === "t" && !kbInfo.event.repeat) {
+                        const order: SkyPreset[] = ["day", "sunset", "procedural"];
+                        const labels: Record<SkyPreset, string> = {
+                            day: "🌤️ Real Sky: Tropical Day Clouds",
+                            sunset: "🌅 Real Sky: Golden Ocean Sunset",
+                            procedural: "⛅ Dynamic Sky: Moving Clouds & Sun",
+                        };
+                        const next = order[(order.indexOf(this._skybox.preset) + 1) % order.length];
+                        this._skybox.setPreset(next);
+                        this._useProceduralSky = next === "procedural";
+                        this._forceUpdateGlowIntensity = true;
+                        this._player?.showToast(labels[next], "SKY & ATMOSPHERE");
                     }
                     break;
                 case BABYLON.KeyboardEventTypes.KEYUP:
                     if (kbInfo.event.key === "Shift") {
                         this._camera.speed = 2;
+                    } else if (kbInfo.event.key === "F8" && !this._gui && !this._loadingGui) {
+                        this._loadingGui = true;
+                        OceanGUI.LoadDAT()
+                            .then(() => {
+                                this._gui = new OceanGUI(
+                                    this._useProceduralSky,
+                                    this._scene,
+                                    this._engine,
+                                    this._parameterRead.bind(this),
+                                    this._parameterChanged.bind(this)
+                                );
+                            })
+                            .catch((err) => console.warn("Failed to load OceanGUI:", err))
+                            .finally(() => {
+                                this._loadingGui = false;
+                            });
                     }
                     break;
             }
@@ -184,7 +213,7 @@ export class Ocean {
         scene.onBeforeRenderObservable.add(() => {
             const dt = Math.min(0.05, this._engine.getDeltaTime() / 1000 || 0.016);
 
-            if (this._skybox.update(this._light) || this._forceUpdateGlowIntensity) {
+            if (this._skybox.update(this._light, dt) || this._forceUpdateGlowIntensity) {
                 if (this._glowLayer) {
                     const minIntensity = 0.6;
                     const maxIntensity = 3;
@@ -523,7 +552,15 @@ export class Ocean {
             case "lightIntensity":
                 return this._light.intensity;
             case "proceduralSky":
-                return this._useProceduralSky;
+                return this._skybox.preset === "procedural";
+            case "sky_preset":
+                return this._skybox.preset;
+            case "sky_azimuth":
+                return this._skybox.azimuthTurns;
+            case "sky_cloudSpeed":
+                return this._skybox.cloudSpeed;
+            case "sky_cloudCoverage":
+                return this._skybox.cloudCoverage;
             case "enableShadows":
                 return this._light.shadowEnabled;
             case "enableFXAA":
@@ -620,16 +657,26 @@ export class Ocean {
                     this._createGlowLayer();
                 }
                 break;
-            case "proceduralSky":
-                value = !!value;
-                if (this._useProceduralSky !== value) {
-                    if (this._gui) {
-                        this._gui.dispose();
-                    }
-                    this._skybox.dispose();
-                    this._useProceduralSky = value;
-                    this._skybox = new SkyBox(this._useProceduralSky, this._scene);
-                }
+            case "proceduralSky": {
+                const useProc = !!value;
+                this._useProceduralSky = useProc;
+                this._skybox.setPreset(useProc ? "procedural" : "day");
+                this._forceUpdateGlowIntensity = true;
+                break;
+            }
+            case "sky_preset":
+                this._skybox.setPreset(value as SkyPreset);
+                this._useProceduralSky = value === "procedural";
+                this._forceUpdateGlowIntensity = true;
+                break;
+            case "sky_azimuth":
+                this._skybox.azimuthTurns = parseFloat(value);
+                break;
+            case "sky_cloudSpeed":
+                this._skybox.cloudSpeed = parseFloat(value);
+                break;
+            case "sky_cloudCoverage":
+                this._skybox.cloudCoverage = parseFloat(value);
                 break;
             case "useZQSD":
                 this._useZQSD = !!value;
