@@ -3,6 +3,7 @@ import { ShipProps } from './ShipProps';
 import { InteractiveShipObjects, InteractiveObject } from './InteractiveShipObjects';
 import { Buoyancy } from '../ocean/Buoyancy';
 import { PirateCharacter, CharacterPose } from './PirateCharacter';
+import { PirateIslandWorld } from '../world/PirateIslandWorld';
 
 export enum PlayerGameplayState {
     Walking = 'walking',
@@ -79,6 +80,10 @@ export class ShipDeckPlayer {
     private _tpDistance = 3.4;
     private _charSlashTimer = 0;
     private _isDiving = false;
+    private _islands: PirateIslandWorld | null = null;
+    private _isOnIsland = false;
+    private _wasOnIsland = false;
+    private _shipShoalCooldown = 0;
 
     private get _isFirstPerson(): boolean {
         return this.cameraViewMode === CameraViewMode.FirstPerson;
@@ -309,9 +314,12 @@ export class ShipDeckPlayer {
                 }
             }
 
-            // Space: Jump (when walking, single press) or action trigger (fire cannon, hammer nail)
+            // Space: Jump (when walking on deck or island beach, single press) or action trigger (fire cannon, hammer nail)
             if (key === " ") {
-                if (this.gameplayState === PlayerGameplayState.Walking) {
+                if (
+                    this.gameplayState === PlayerGameplayState.Walking ||
+                    (this.gameplayState === PlayerGameplayState.Swimming && this._isOnIsland)
+                ) {
                     if (!e.repeat && this._isGrounded && this._isPlayerControlled) {
                         this._verticalVelocity = this._jumpForce;
                         this._isGrounded = false;
@@ -745,12 +753,20 @@ export class ShipDeckPlayer {
     // MAIN UPDATE LOOP
     // =========================================================================
 
+    public setIslandWorld(islands: PirateIslandWorld): void {
+        this._islands = islands;
+    }
+
     private _resolveCharacterPose(): CharacterPose {
         switch (this.gameplayState) {
             case PlayerGameplayState.Walking:
                 if (!this._isGrounded) return "jump";
                 return Math.hypot(this._currentVelocity.x, this._currentVelocity.z) > 0.35 ? "walk" : "idle";
             case PlayerGameplayState.Swimming:
+                if (this._isOnIsland) {
+                    if (!this._isGrounded) return "jump";
+                    return Math.hypot(this._currentVelocity.x, this._currentVelocity.z) > 0.35 ? "walk" : "idle";
+                }
                 if (!this._hasHitWater) return "jump";
                 return this._isDiving ? "dive" : "swim";
             case PlayerGameplayState.Helm:
@@ -769,24 +785,29 @@ export class ShipDeckPlayer {
     private _updateCharacterVisuals(dt: number, moveSpeedRatio: number): void {
         this._charSlashTimer = Math.max(0, this._charSlashTimer - dt);
 
-        const targetCharY =
-            this.gameplayState === PlayerGameplayState.Swimming && this._hasHitWater ? -1.35 : -this._eyeHeight;
+        const isFloatingInWater =
+            this.gameplayState === PlayerGameplayState.Swimming && this._hasHitWater && !this._isOnIsland;
+        const targetCharY = isFloatingInWater ? -1.35 : -this._eyeHeight;
         this.character.root.position.y = BABYLON.Scalar.Lerp(
             this.character.root.position.y,
             targetCharY,
             1.0 - Math.exp(-12.0 * dt)
         );
 
+        const isWalkLikeState =
+            this.gameplayState === PlayerGameplayState.Walking ||
+            (this.gameplayState === PlayerGameplayState.Swimming && this._isOnIsland);
         const showFirstPersonCutlass =
             this._isFirstPerson &&
             this.props.isCutlassEquipped &&
-            this.gameplayState === PlayerGameplayState.Walking;
+            isWalkLikeState;
         if (this.props.cutlassViewMesh && this.props.cutlassViewMesh.isEnabled() !== showFirstPersonCutlass) {
             this.props.cutlassViewMesh.setEnabled(showFirstPersonCutlass);
         }
 
         const showCharCutlass =
-            this.props.isCutlassEquipped && this.gameplayState !== PlayerGameplayState.Swimming;
+            this.props.isCutlassEquipped &&
+            (this.gameplayState !== PlayerGameplayState.Swimming || this._isOnIsland);
         this.character.setCutlassEquipped(showCharCutlass);
 
         const slashDuration = 0.38;
@@ -848,8 +869,9 @@ export class ShipDeckPlayer {
                 1.2
             );
         } else if (this.gameplayState === PlayerGameplayState.Swimming) {
+            const denom = this._isOnIsland ? this._walkSpeed : this._swimSpeed;
             moveSpeedRatio = BABYLON.Scalar.Clamp(
-                Math.hypot(this._currentVelocity.x, this._currentVelocity.z) / this._swimSpeed,
+                Math.hypot(this._currentVelocity.x, this._currentVelocity.z) / denom,
                 0,
                 1.5
             );
@@ -1074,6 +1096,8 @@ export class ShipDeckPlayer {
         this.gameplayState = PlayerGameplayState.Swimming;
         this._hasHitWater = false;
         this._isDiving = false;
+        this._isOnIsland = false;
+        this._wasOnIsland = false;
         this._isUnderwater = false;
         this._canBoardShip = false;
         this._swimStrokeTimer = 0.2;
@@ -1103,22 +1127,63 @@ export class ShipDeckPlayer {
 
         const waterY = this._buoyancy ? this._buoyancy.getWaterHeight(this._localPos) : 0;
         const surfaceEyeY = waterY + 0.20;
+        const preGroundY = this._islands
+            ? this._islands.getTerrainHeightAt(this._localPos.x, this._localPos.z)
+            : -40;
 
         if (!this._hasHitWater) {
             this._isDiving = false;
-            // Free-fall from ship deck until impacting ocean surface
+            // Free-fall from ship deck until impacting ocean surface or island shore
             this._verticalVelocity += this._gravity * dt;
             this._localPos.x += this._currentVelocity.x * dt;
             this._localPos.z += this._currentVelocity.z * dt;
             this._localPos.y += this._verticalVelocity * dt;
 
-            if (this._localPos.y <= surfaceEyeY) {
+            const landY = this._islands
+                ? this._islands.getTerrainHeightAt(this._localPos.x, this._localPos.z)
+                : preGroundY;
+            if (landY > waterY - 0.95 && this._localPos.y <= landY + this._eyeHeight) {
                 this._hasHitWater = true;
+                this._isOnIsland = true;
+                this._wasOnIsland = true;
+                this._isGrounded = true;
+                this._verticalVelocity = 0;
+                this._localPos.y = landY + this._eyeHeight;
+                this.audio.playFootstep();
+                this.showToast("🏝️ Landed on Pirate Cove Island! Explore the palms, pier & campfire.", "LAND HO!");
+            } else if (this._localPos.y <= surfaceEyeY) {
+                this._hasHitWater = true;
+                this._isOnIsland = false;
+                this._wasOnIsland = false;
                 this._verticalVelocity = Math.max(-1.6, this._verticalVelocity * 0.18);
                 this.audio.playWaterSplash();
                 this.props.createWaterSplashAt(new BABYLON.Vector3(this._localPos.x, waterY, this._localPos.z), 0.45);
             }
         } else {
+            // Determine whether player is wading/walking on an island vs swimming in open water (with hysteresis)
+            if (this._isOnIsland) {
+                if (preGroundY < waterY - 1.28) {
+                    this._isOnIsland = false;
+                    this._isGrounded = false;
+                }
+            } else if ((!this._isDiving && preGroundY > waterY - 0.95) || preGroundY > waterY + 0.25) {
+                this._isOnIsland = true;
+                this._isGrounded = this._localPos.y <= preGroundY + this._eyeHeight + 0.18;
+            }
+
+            if (this._isOnIsland && !this._wasOnIsland && preGroundY > -0.25) {
+                this._wasOnIsland = true;
+                this.showToast("🏝️ Stepped ashore on Pirate Cove Island! Explore the palms, pier & campfire.", "LAND HO!");
+            } else if (!this._isOnIsland) {
+                this._wasOnIsland = false;
+            }
+
+            // Clamp third-person camera pitch on beaches so boom stays clear of the sand
+            if (this._isOnIsland && !this._isFirstPerson) {
+                this._currentPitch = BABYLON.Scalar.Clamp(this._currentPitch, -0.65, 0.25);
+                this._targetPitch = this._currentPitch;
+            }
+
             let moveForward = 0;
             let moveRight = 0;
             if (this._keys["w"] || this._keys["arrowup"]) moveForward += 1;
@@ -1127,7 +1192,9 @@ export class ShipDeckPlayer {
             if (this._keys["d"] || this._keys["arrowright"]) moveRight += 1;
 
             const isMoving = moveForward !== 0 || moveRight !== 0;
-            const swimSpeed = this._keys["shift"] ? 6.8 : this._swimSpeed;
+            const moveSpeed = this._isOnIsland
+                ? (this._keys["shift"] ? 6.4 : this._walkSpeed)
+                : (this._keys["shift"] ? 6.8 : this._swimSpeed);
 
             const sinYaw = Math.sin(this._currentYaw);
             const cosYaw = Math.cos(this._currentYaw);
@@ -1142,58 +1209,88 @@ export class ShipDeckPlayer {
                     this._tmpForward.z * moveForward + this._tmpRight.z * moveRight
                 );
                 this._tmpMoveDir.normalize();
-                this._tmpMoveDir.scaleToRef(swimSpeed, this._tmpTargetVel);
+                this._tmpMoveDir.scaleToRef(moveSpeed, this._tmpTargetVel);
 
                 this._swimStrokeTimer += dt;
-                if (this._swimStrokeTimer >= 0.62) {
+                if (this._isOnIsland) {
+                    if (this._isGrounded && this._swimStrokeTimer >= 0.42) {
+                        this.audio.playFootstep();
+                        this._swimStrokeTimer = 0;
+                    }
+                } else if (this._swimStrokeTimer >= 0.62) {
                     this.audio.playSwimStroke();
                     this._swimStrokeTimer = 0;
                 }
             } else {
-                this._swimStrokeTimer = 0.45;
+                this._swimStrokeTimer = this._isOnIsland ? 0.32 : 0.45;
             }
 
-            const dragLerp = 1.0 - Math.exp(-(isMoving ? 6.0 : 4.5) * dt);
+            const accelRate = this._isOnIsland ? (isMoving ? 14.0 : 12.0) : (isMoving ? 6.0 : 4.5);
+            const dragLerp = 1.0 - Math.exp(-accelRate * dt);
             BABYLON.Vector3.LerpToRef(this._currentVelocity, this._tmpTargetVel, dragLerp, this._currentVelocity);
 
             this._localPos.x += this._currentVelocity.x * dt;
             this._localPos.z += this._currentVelocity.z * dt;
 
-            // Smooth vertical swim / dive / critically-damped wave float (no pogo bouncing)
-            const bodySubmerged = this._localPos.y < waterY - 0.10;
-            const divingDown = this._keys["e"] || this._keys["control"] || (bodySubmerged && moveForward > 0 && this._currentPitch < -0.25);
-            const swimmingUp = this._keys[" "] || (bodySubmerged && moveForward > 0 && this._currentPitch > 0.25);
-            this._isDiving = divingDown || bodySubmerged;
+            const groundY = this._islands
+                ? this._islands.getTerrainHeightAt(this._localPos.x, this._localPos.z)
+                : -40;
 
-            if (divingDown) {
-                const diveSpeed = this._keys["shift"] ? -4.8 : -3.4;
-                this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, diveSpeed, 1.0 - Math.exp(-6.0 * dt));
-                this._localPos.y += this._verticalVelocity * dt;
-            } else if (swimmingUp) {
-                if (this._localPos.y < surfaceEyeY) {
-                    this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, 3.8, 1.0 - Math.exp(-7.0 * dt));
-                    this._localPos.y = Math.min(surfaceEyeY + 0.06, this._localPos.y + this._verticalVelocity * dt);
-                } else {
-                    // Gently hold head slightly higher on surface without leaping out of water
+            if (this._isOnIsland) {
+                this._isDiving = false;
+                const standEyeY = groundY + this._eyeHeight;
+                if (this._isGrounded && this._verticalVelocity <= 0 && this._localPos.y - standEyeY < 0.45) {
+                    this._localPos.y = standEyeY;
                     this._verticalVelocity = 0;
-                    this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, surfaceEyeY + 0.06, 1.0 - Math.exp(-8.0 * dt));
+                } else {
+                    this._verticalVelocity += this._gravity * dt;
+                    this._localPos.y += this._verticalVelocity * dt;
+                    if (this._localPos.y <= standEyeY) {
+                        if (!this._isGrounded && this._verticalVelocity < -2.2) {
+                            this.audio.playFootstep();
+                        }
+                        this._localPos.y = standEyeY;
+                        this._verticalVelocity = 0;
+                        this._isGrounded = true;
+                    }
                 }
-            } else if (this._localPos.y < surfaceEyeY - 0.12) {
-                // Smoothly float upward from underwater back toward the surface
-                const riseSpeed = Math.min(3.0, (surfaceEyeY - this._localPos.y) * 3.2);
-                this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, riseSpeed, 1.0 - Math.exp(-5.0 * dt));
-                this._localPos.y = Math.min(surfaceEyeY, this._localPos.y + this._verticalVelocity * dt);
             } else {
-                // Ride wave surface cleanly with zero overshoot bounce
-                this._verticalVelocity = 0;
-                this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, surfaceEyeY, 1.0 - Math.exp(-7.5 * dt));
-            }
+                // Smooth vertical swim / dive / critically-damped wave float (no pogo bouncing)
+                const bodySubmerged = this._localPos.y < waterY - 0.10;
+                const divingDown = this._keys["e"] || this._keys["control"] || (bodySubmerged && moveForward > 0 && this._currentPitch < -0.25);
+                const swimmingUp = this._keys[" "] || (bodySubmerged && moveForward > 0 && this._currentPitch > 0.25);
+                this._isDiving = divingDown || bodySubmerged;
 
-            // Clamp maximum dive depth
-            const minDiveY = waterY - 14.0;
-            if (this._localPos.y < minDiveY) {
-                this._localPos.y = minDiveY;
-                this._verticalVelocity = Math.max(0, this._verticalVelocity);
+                if (divingDown) {
+                    const diveSpeed = this._keys["shift"] ? -4.8 : -3.4;
+                    this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, diveSpeed, 1.0 - Math.exp(-6.0 * dt));
+                    this._localPos.y += this._verticalVelocity * dt;
+                } else if (swimmingUp) {
+                    if (this._localPos.y < surfaceEyeY) {
+                        this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, 3.8, 1.0 - Math.exp(-7.0 * dt));
+                        this._localPos.y = Math.min(surfaceEyeY + 0.06, this._localPos.y + this._verticalVelocity * dt);
+                    } else {
+                        // Gently hold head slightly higher on surface without leaping out of water
+                        this._verticalVelocity = 0;
+                        this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, surfaceEyeY + 0.06, 1.0 - Math.exp(-8.0 * dt));
+                    }
+                } else if (this._localPos.y < surfaceEyeY - 0.12) {
+                    // Smoothly float upward from underwater back toward the surface
+                    const riseSpeed = Math.min(3.0, (surfaceEyeY - this._localPos.y) * 3.2);
+                    this._verticalVelocity = BABYLON.Scalar.Lerp(this._verticalVelocity, riseSpeed, 1.0 - Math.exp(-5.0 * dt));
+                    this._localPos.y = Math.min(surfaceEyeY, this._localPos.y + this._verticalVelocity * dt);
+                } else {
+                    // Ride wave surface cleanly with zero overshoot bounce
+                    this._verticalVelocity = 0;
+                    this._localPos.y = BABYLON.Scalar.Lerp(this._localPos.y, surfaceEyeY, 1.0 - Math.exp(-7.5 * dt));
+                }
+
+                // Clamp maximum dive depth and island seabed floor
+                const minDiveY = Math.max(waterY - 14.0, groundY + 1.2);
+                if (this._localPos.y < minDiveY) {
+                    this._localPos.y = minDiveY;
+                    this._verticalVelocity = Math.max(0, this._verticalVelocity);
+                }
             }
         }
 
@@ -1258,6 +1355,8 @@ export class ShipDeckPlayer {
 
         this._canBoardShip = false;
         this._isDiving = false;
+        this._isOnIsland = false;
+        this._wasOnIsland = false;
         this._applyUnderwaterState(false);
         this.audio.playFootstep();
         if (this.props.isCutlassEquipped && this.props.cutlassViewMesh) {
@@ -1334,6 +1433,25 @@ export class ShipDeckPlayer {
         this._tmpForward.normalize();
         const moveDist = this.currentShipSpeed * dt;
         this._shipRoot.position.addInPlaceFromFloats(this._tmpForward.x * moveDist, this._tmpForward.y * moveDist, this._tmpForward.z * moveDist);
+
+        if (this._shipShoalCooldown > 0) {
+            this._shipShoalCooldown = Math.max(0, this._shipShoalCooldown - dt);
+        }
+        if (this._islands) {
+            const collision = this._islands.getShipCollision(this._shipRoot.position.x, this._shipRoot.position.z);
+            if (collision.collided) {
+                this._shipRoot.position.x += collision.pushX;
+                this._shipRoot.position.z += collision.pushZ;
+                this.currentShipSpeed *= 0.65;
+                if (this._shipShoalCooldown <= 0) {
+                    this._shipShoalCooldown = 4.0;
+                    this.showToast(
+                        "⚠️ Shallow reef ahead! Hull steered clear of island shoals — dive overboard to wade ashore!",
+                        "SHALLOW WATERS"
+                    );
+                }
+            }
+        }
 
         // Calculate heading in compass degrees
         const headingDeg = Math.round(((Math.atan2(this._tmpForward.x, -this._tmpForward.z) * 180) / Math.PI + 360) % 360);

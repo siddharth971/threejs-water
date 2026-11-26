@@ -7,6 +7,8 @@ import { OceanMaterial } from './OceanMaterial';
 import { OceanGeometry } from './OceanGeometry';
 import { OceanGUI } from './OceanGUI';
 import { ShipDeckPlayer } from '../player/ShipDeckPlayer';
+import { PirateIslandWorld } from '../world/PirateIslandWorld';
+import { OceanCreatures } from '../world/OceanCreatures';
 
 const showBuoy = false;
 const showFisherBoat = false;
@@ -39,6 +41,8 @@ export class Ocean {
     private _forceUpdateGlowIntensity: boolean;
     private _canvas: HTMLCanvasElement = null as any;
     private _player: ShipDeckPlayer | null = null;
+    private _islands: PirateIslandWorld | null = null;
+    private _creatures: OceanCreatures | null = null;
     private _sailHeight = 1;
     private _sailElevation = 2.5;
     private _windWaveSpeed = 2.6;
@@ -92,16 +96,6 @@ export class Ocean {
 
         const scene = new BABYLON.Scene(engine);
 
-        // Particle system
-        const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-        particleSystem.particleTexture = new BABYLON.Texture("textures/flare.png", scene);
-        particleSystem.addColorGradient(0, new BABYLON.Color4(1, 0, 0, 1), new BABYLON.Color4(1, 0, 1, 1));
-        particleSystem.addColorGradient(1, new BABYLON.Color4(0, 1, 0, 1), new BABYLON.Color4(1, 1, 0, 1));
-        particleSystem.emitter = new BABYLON.Vector3(0, 3, 0);
-        particleSystem.minEmitBox = new BABYLON.Vector3(-3, 0, -3);
-        particleSystem.maxEmitBox = new BABYLON.Vector3(3, 0, 3);
-        particleSystem.start();
-
         scene.useRightHandedSystem = true;
 
         this._engine = engine;
@@ -142,9 +136,10 @@ export class Ocean {
         this._light = new BABYLON.DirectionalLight("light", this._lightDirection, scene);
         this._light.intensity = 3.6;
         this._light.diffuse = new BABYLON.Color3(1, 1, 1);
-        this._light.shadowMinZ = 0;
-        this._light.shadowMaxZ = 40;
-        this._light.shadowOrthoScale = 0.5;
+        this._light.autoUpdateExtends = false;
+        this._light.shadowFrustumSize = 86;
+        this._light.shadowMinZ = 2;
+        this._light.shadowMaxZ = 160;
 
         this._shadowGenerator = new BABYLON.ShadowGenerator(2048, this._light);
         this._shadowGenerator.usePercentageCloserFiltering = true;
@@ -154,6 +149,8 @@ export class Ocean {
         this._buoyancy = new Buoyancy(this._size, 3, 0.2);
         this._oceanMaterial = new OceanMaterial(this._depthRenderer, this._scene);
         this._oceanGeometry = new OceanGeometry(this._oceanMaterial, this._camera, this._scene);
+        this._islands = new PirateIslandWorld(scene, this._shadowGenerator, this._depthRenderer, this._buoyancy);
+        this._creatures = new OceanCreatures(scene, this._buoyancy, this._islands, this._shadowGenerator);
 
         this._fxaa = new BABYLON.FxaaPostProcess("fxaa", 1, this._camera);
 
@@ -228,7 +225,6 @@ export class Ocean {
                     this._glowLayer.intensity = sunPos.y < 0 ? maxIntensity : intensity;
                     this._forceUpdateGlowIntensity = false;
                 }
-                this._light.position = this._light.position.clone().normalize().scaleInPlace(30);
             }
             this._oceanMaterial.setHorizonColor(this._skybox.getHorizonColor());
             this._wavesGenerator!.update(this._buoyancy.enabled);
@@ -237,7 +233,10 @@ export class Ocean {
             if (this._player) {
                 this._player.update();
             }
+            this._islands?.update(dt);
+            this._creatures?.update(dt);
             this._camera.getViewMatrix(true);
+            this._updateShadowFocus();
             this._skybox.syncPosition();
             this._oceanGeometry.update();
         });
@@ -245,6 +244,15 @@ export class Ocean {
         return new Promise((resolve) => {
             scene.executeWhenReady(() => resolve(scene));
         });
+    }
+
+    private _updateShadowFocus(): void {
+        const camPos = this._camera.globalPosition;
+        const forward = this._camera.getForwardRay(1).direction;
+        const fx = Math.round((camPos.x + forward.x * 24) * 2) * 0.5;
+        const fz = Math.round((camPos.z + forward.z * 24) * 2) * 0.5;
+        const dir = this._light.direction;
+        this._light.position.set(fx - dir.x * 68, 2.0 - dir.y * 68, fz - dir.z * 68);
     }
 
     private _setCameraKeys(): void {
@@ -486,6 +494,12 @@ export class Ocean {
                 (submerged) => this._oceanGeometry.setUnderwater(submerged)
             );
             this._player.registerShadowCasters(this._shadowGenerator);
+            if (this._islands) {
+                this._player.setIslandWorld(this._islands);
+            }
+            if (this._creatures) {
+                this._creatures.setShipProps(this._player.props);
+            }
             this._player.props.setSailHeight(this._sailHeight);
             this._player.props.setSailElevation(this._sailElevation);
             this._player.props.windWaveSpeed = this._windWaveSpeed;

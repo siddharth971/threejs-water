@@ -217,12 +217,22 @@ export class OceanMaterial {
                 #endif
 
                 vec2 screenUV = vClipCoords.xy / vClipCoords.w;
-                screenUV = screenUV * 0.5 + 0.5;
+                screenUV = clamp(screenUV * 0.5 + 0.5, vec2(0.001), vec2(0.999));
                 float backgroundDepth = texture2D(_CameraDepthTexture, screenUV).r * _CameraData.y;
                 float surfaceDepth = vMetric;
-                float depthDifference = max(0.0, (backgroundDepth - surfaceDepth) - 0.5);
-                float foam = texture2D(_FoamTexture, vWorldUV * 0.5 + _Time * 2.).r;
-                jacobian += _ContactFoam * saturate(max(0.0, foam - depthDifference) * 5.0) * 0.9;
+                float rawDepthDiff = max(0.0, backgroundDepth - surfaceDepth);
+                float depthDifference = max(0.0, rawDepthDiff - 0.5);
+                float hasSeabed = step(backgroundDepth, _CameraData.y * 0.5);
+                float foam = texture2D(_FoamTexture, vWorldUV * 0.5 + _Time * 2.0).r;
+                float coastalSwirl = texture2D(_FoamTexture, vWorldUV * 0.14 - vec2(_Time * 0.35, _Time * 0.22)).r;
+                jacobian += _ContactFoam * saturate(max(0.0, foam - depthDifference) * 5.0) * 0.85 * hasSeabed;
+
+                // Feathered organic shoreline surf wash + thin lacy swash edge right where waves lap the beach
+                float shoreMask = (1.0 - smoothstep(0.0, 2.8, rawDepthDiff)) * hasSeabed;
+                float surfWave = sin(rawDepthDiff * 6.8 + _Time * 3.6 + coastalSwirl * 4.2 + foam * 2.0);
+                float surfBands = shoreMask * smoothstep(0.18, 0.86, surfWave) * (0.40 + 0.60 * foam);
+                float swashLip = (1.0 - smoothstep(0.02, 0.42, rawDepthDiff)) * hasSeabed * (0.45 + 0.55 * coastalSwirl);
+                jacobian = saturate(jacobian + surfBands * 0.72 + swashLip * 0.85);
     
                 surfaceAlbedo = mix(vec3(0.0), _FoamColor, jacobian);
 
@@ -234,6 +244,29 @@ export class OceanMaterial {
                 vec3 H = normalize(-normalW + lightDirection);
                 float ViewDotH = pow5(saturate(dot(viewDir, -H))) * 30.0 * _SSSStrength;
                 vec3 color = mix(_Color, saturate(_Color + _SSSColor.rgb * ViewDotH * vLodScales.w), vLodScales.z);
+
+                // Wave-refracted seabed visibility, caustics & Beer-Lambert optical lagoon transition (0..9m)
+                vec2 refractedXZ = vWorldUV + normalW.xz * clamp(rawDepthDiff * 0.42, 0.0, 2.0);
+                float gPatch = sin(refractedXZ.x * 0.22 + cos(refractedXZ.y * 0.19)) * 0.5 + 0.5;
+                float c1 = sin(refractedXZ.x * 1.45 + _Time * 2.3 + cos(refractedXZ.y * 1.25 - _Time * 1.7));
+                float c2 = cos(refractedXZ.y * 1.65 - _Time * 2.0 + sin(refractedXZ.x * 1.15 + _Time * 1.5));
+                float caustic = pow(clamp(0.5 + 0.25 * (c1 + c2), 0.0, 1.0), 3.6);
+                float cSharp = smoothstep(0.36, 0.92, caustic);
+
+                // Sunlit coral-sand shoals + deeper seagrass/reef patches modulated by sun elevation
+                float sunVis = saturate(-lightDirection.y * 1.2 + 0.25);
+                vec3 coralSandFloor = mix(
+                    vec3(0.54, 0.44, 0.26),
+                    vec3(0.14, 0.30, 0.20),
+                    smoothstep(0.56, 0.90, gPatch) * smoothstep(0.7, 3.4, rawDepthDiff)
+                );
+                vec3 sunlitFloor = coralSandFloor * (0.68 + 0.62 * cSharp) * sunVis;
+
+                vec3 beerTransmittance = exp(-rawDepthDiff * vec3(0.66, 0.19, 0.15));
+                vec3 lagoonVolume = vec3(0.025, 0.44, 0.47) * sunVis;
+                vec3 opticalShallowColor = mix(lagoonVolume, sunlitFloor, beerTransmittance);
+                float shallowVis = (1.0 - smoothstep(0.8, 9.2, rawDepthDiff)) * hasSeabed * (1.0 - uIsUnderwater);
+                color = mix(color, opticalShallowColor, shallowVis * 0.88);
     
                 float fresnel = dot(normalW, viewDir);
                 fresnel = saturate(1.0 - fresnel);
