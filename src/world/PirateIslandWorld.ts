@@ -29,6 +29,37 @@ interface SwayItem {
     amp: number;
 }
 
+type NPCPoseStyle = 'lookout' | 'relaxed' | 'trader' | 'officer' | 'fisher' | 'patrol';
+
+interface IslandNPC {
+    node: BABYLON.TransformNode;
+    baseRotY: number;
+    baseY: number;
+    phase: number;
+    style: NPCPoseStyle;
+    baseSpineX: number;
+    baseHeadY: number;
+    bones: {
+        spine?: BABYLON.TransformNode;
+        spine2?: BABYLON.TransformNode;
+        head?: BABYLON.TransformNode;
+        leftArm?: BABYLON.TransformNode;
+        rightArm?: BABYLON.TransformNode;
+        leftForeArm?: BABYLON.TransformNode;
+        rightForeArm?: BABYLON.TransformNode;
+    };
+    patrolStart?: BABYLON.Vector2;
+    patrolEnd?: BABYLON.Vector2;
+    patrolSpeed?: number;
+}
+
+interface MooredBoat {
+    node: BABYLON.TransformNode;
+    baseY: number;
+    phaseOffset: number;
+    baseRotY: number;
+}
+
 export interface IslandCollisionResult {
     collided: boolean;
     pushX: number;
@@ -80,8 +111,8 @@ export class PirateIslandWorld {
     private _covePathA = new BABYLON.Vector2(-44, -56);
     private _covePathB = new BABYLON.Vector2(-52, -62);
     private _time = 0;
-    private _npcs: Array<{ node: BABYLON.TransformNode; baseRotY: number; baseY: number; phase: number }> = [];
-    private _boatBuoyNodes: Array<{ node: BABYLON.TransformNode; phaseOffset: number; baseY: number }>= [];
+    private _npcs: IslandNPC[] = [];
+    private _mooredBoats: MooredBoat[] = [];
 
     constructor(
         scene: BABYLON.Scene,
@@ -559,11 +590,23 @@ export class PirateIslandWorld {
                 chestContainer,
                 campfireContainer,
                 barrelContainer,
-                oakContainer,
-                mapleContainer,
-                pineContainer,
+                phIslandTree1Container,
+                phIslandTree2Container,
+                phIslandTree3Container,
+                phPachiraContainer,
                 palmSaplingContainer,
                 tropicalBushContainer,
+                bananaContainer,
+                taroContainer,
+                tiPlantContainer,
+                treeFernContainer,
+                agaveContainer,
+                chileanPalmContainer,
+                floweringShrubContainer,
+                phFernContainer,
+                phCalatheaContainer,
+                phAnthuriumContainer,
+                phShrubContainer,
                 rowboatContainer,
                 longboatContainer,
                 fishingBoatContainer,
@@ -583,11 +626,23 @@ export class PirateIslandWorld {
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'treasure_chest.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'campfire.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'barrel.glb', this._scene),
-                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'oak_tree.glb', this._scene),
-                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'maple_tree.glb', this._scene),
-                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'pine_tree.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_island_tree1.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_island_tree2.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_island_tree3.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_pachira.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'palm_sapling.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'tropical_bush.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'banana_plant.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'taro_plant.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ti_plant.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'tree_fern.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'flowering_agave.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'chilean_palm.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'flowering_shrub.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_fern.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_calathea.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_anthurium.glb', this._scene),
+                BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'ph_shrub.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'rowboat.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'longboat.glb', this._scene),
                 BABYLON.SceneLoader.LoadAssetContainerAsync('models/world/', 'fishing_boat.glb', this._scene),
@@ -609,12 +664,23 @@ export class PirateIslandWorld {
             this._tuneContainerMaterials(chestContainer);
             this._tuneContainerMaterials(campfireContainer);
             this._tuneContainerMaterials(barrelContainer);
-            // New assets
-            this._tuneContainerMaterials(oakContainer);
-            this._tuneContainerMaterials(mapleContainer);
-            this._tuneContainerMaterials(pineContainer);
+            this._tuneContainerMaterials(phIslandTree1Container);
+            this._tuneContainerMaterials(phIslandTree2Container);
+            this._tuneContainerMaterials(phIslandTree3Container);
+            this._tuneContainerMaterials(phPachiraContainer);
             this._tuneContainerMaterials(palmSaplingContainer);
             this._tuneContainerMaterials(tropicalBushContainer);
+            this._tuneContainerMaterials(bananaContainer);
+            this._tuneContainerMaterials(taroContainer);
+            this._tuneContainerMaterials(tiPlantContainer);
+            this._tuneContainerMaterials(treeFernContainer);
+            this._tuneContainerMaterials(agaveContainer);
+            this._tuneContainerMaterials(chileanPalmContainer);
+            this._tuneContainerMaterials(floweringShrubContainer);
+            this._tuneContainerMaterials(phFernContainer);
+            this._tuneContainerMaterials(phCalatheaContainer);
+            this._tuneContainerMaterials(phAnthuriumContainer);
+            this._tuneContainerMaterials(phShrubContainer);
             this._tuneContainerMaterials(rowboatContainer);
             this._tuneContainerMaterials(longboatContainer);
             this._tuneContainerMaterials(fishingBoatContainer);
@@ -636,13 +702,35 @@ export class PirateIslandWorld {
                 depthFoam = false,
                 swayAmp = 0,
                 tiltX = 0,
-                tiltZ = 0
+                tiltZ = 0,
+                doNotInstantiate = false,
+                variantPick = -1
             ): BABYLON.TransformNode => {
-                const inst = container.instantiateModelsToScene(() => name, false);
+                const inst = container.instantiateModelsToScene(
+                    (sourceName) => `${name}_${sourceName}`,
+                    false,
+                    { doNotInstantiate: doNotInstantiate || variantPick >= 0 }
+                );
+                for (const ag of inst.animationGroups) {
+                    ag.stop();
+                }
                 const node = new BABYLON.TransformNode(name, this._scene);
                 node.parent = this._root;
                 for (const rn of inst.rootNodes) {
                     rn.parent = node;
+                }
+                // Multi-variant botanical atlases (Poly Haven) pack several separate plants in one grid; pick & center one
+                if (variantPick >= 0) {
+                    const variants = node.getChildMeshes(false).filter((m) => m.getTotalVertices() > 0);
+                    if (variants.length > 1) {
+                        const keepIdx = variantPick % variants.length;
+                        variants[keepIdx].position.set(0, 0, 0);
+                        for (let vi = 0; vi < variants.length; vi++) {
+                            if (vi !== keepIdx) {
+                                variants[vi].dispose(false, false);
+                            }
+                        }
+                    }
                 }
                 node.position.set(x, y, z);
                 node.rotation.set(tiltX, rotY, tiltZ);
@@ -671,7 +759,8 @@ export class PirateIslandWorld {
                 const tSeg = Math.max(0, Math.min(1, (pax * bax + paz * baz) / lenSq));
                 const distSeg = Math.hypot(pax - bax * tSeg, paz - baz * tSeg);
                 const distCamp = Math.hypot(wx - this._covePathB.x, wz - this._covePathB.y);
-                return distSeg < 2.6 || distCamp < 3.6;
+                const distPier = Math.hypot(wx - (this._covePathA.x + Math.cos(COVE_BAY_ANGLE) * 1.5), wz - (this._covePathA.y + Math.sin(COVE_BAY_ANGLE) * 1.5));
+                return distSeg < 2.8 || distCamp < 3.6 || distPier < 4.4;
             };
 
             // 1. Place swaying coconut palm trees across full 360° of beaches & hills
@@ -708,8 +797,8 @@ export class PirateIslandWorld {
                     }
                 }
             };
-            placePalmsRing(MAIN_ISLAND, 24, 1.35, 9.6, 1.08, 1.62);
-            placePalmsRing(ATOLL_ISLAND, 7, 1.25, 6.2, 0.95, 1.38);
+            placePalmsRing(MAIN_ISLAND, 24, 1.55, 9.6, 1.08, 1.62);
+            placePalmsRing(ATOLL_ISLAND, 7, 1.45, 6.2, 0.95, 1.38);
 
             // 2. Dense 3-layer tropical jungle bushes, mid ferns & coastal beach-grass tufts
             let vegIdx = 0;
@@ -734,7 +823,7 @@ export class PirateIslandWorld {
                         false,
                         isLargeBush ? 0.022 : 0.032
                     );
-                } else if (h > 0.90 && h <= 2.25) {
+                } else if (h > 1.35 && h <= 2.25) {
                     spawnProp(
                         grassContainer,
                         `grass_${vegIdx++}`,
@@ -759,7 +848,7 @@ export class PirateIslandWorld {
                 const h = this.getTerrainHeightAt(wx, wz);
                 if (h > 1.7 && h < 6.4) {
                     spawnProp(fernContainer, `atollFern_${vegIdx++}`, wx, h - 0.16, wz, ang, 1.85 + (i % 3) * 0.35, false, false, 0.026);
-                } else if (h > 0.8 && h <= 1.7) {
+                } else if (h > 1.3 && h <= 1.7) {
                     spawnProp(grassContainer, `atollGrass_${vegIdx++}`, wx, h - 0.10, wz, ang, 1.4 + (i % 3) * 0.2, false, false, 0.042);
                 }
             }
@@ -835,18 +924,25 @@ export class PirateIslandWorld {
 
             // 4. Crescent Cove Pier, Lantern, Campfire & Treasure aligned to _covePathA / _covePathB
             const bayDirAngle = COVE_BAY_ANGLE;
+            const fwdX = Math.cos(bayDirAngle);
+            const fwdZ = Math.sin(bayDirAngle);
+            const sideX = -fwdZ;
+            const sideZ = fwdX;
             const pierBaseX = this._covePathA.x;
             const pierBaseZ = this._covePathA.y;
-            const pierYaw = Math.atan2(Math.cos(bayDirAngle), Math.sin(bayDirAngle));
+            const pierYaw = Math.atan2(fwdX, fwdZ);
+            const pierDeckY = 0.82; // plank surface sits at pier (-0.30) + 1.12m local height
 
             spawnProp(pierContainer, 'covePier_0', pierBaseX, -0.30, pierBaseZ, pierYaw, 1.0, true, true);
-            const pierEndX = pierBaseX + Math.cos(bayDirAngle) * 3.8;
-            const pierEndZ = pierBaseZ + Math.sin(bayDirAngle) * 3.8;
+            const pierEndX = pierBaseX + fwdX * 2.98;
+            const pierEndZ = pierBaseZ + fwdZ * 2.98;
             spawnProp(pierContainer, 'covePier_1', pierEndX, -0.30, pierEndZ, pierYaw, 1.0, true, true);
 
-            // Warm Dock Lantern on pier tip
-            spawnProp(lanternContainer, 'coveLantern', pierEndX + 1.1, 0.25, pierEndZ - 0.8, pierYaw, 0.85, true, false);
-            const dockLight = new BABYLON.PointLight('coveDockLight', new BABYLON.Vector3(pierEndX + 1.1, 2.5, pierEndZ - 0.8), this._scene);
+            // Warm Dock Lantern mounted on seaward corner of pier tip
+            const lanternX = pierEndX + fwdX * 1.15 + sideX * 1.55;
+            const lanternZ = pierEndZ + fwdZ * 1.15 + sideZ * 1.55;
+            spawnProp(lanternContainer, 'coveLantern', lanternX, 0.85, lanternZ, pierYaw, 0.85, true, false);
+            const dockLight = new BABYLON.PointLight('coveDockLight', new BABYLON.Vector3(lanternX, 2.95, lanternZ), this._scene);
             dockLight.diffuse = new BABYLON.Color3(1.0, 0.72, 0.30);
             dockLight.intensity = 14;
             dockLight.range = 24;
@@ -889,158 +985,391 @@ export class PirateIslandWorld {
             spawnProp(barrelContainer, 'beachBarrel_1', pierBaseX - 2.2, Math.max(0.8, this.getTerrainHeightAt(pierBaseX - 2.2, pierBaseZ + 1.1)) - 0.04, pierBaseZ + 1.1, 1.4, 0.95, true, false);
 
             // ───────────────────────────────────────────────────────────────────────────
-            // 5. DIVERSE JUNGLE TREES  (oak, maple, pine on hillsides; palm saplings on berm)
+            // 5. DIVERSE REAL TREES & LUSH UNDERBRUSH (Oak, Maple, Pine, Olive, Saplings)
             // ───────────────────────────────────────────────────────────────────────────
-            const jungledTreeContainers: Array<[BABYLON.AssetContainer, string, number, number, number, number]> = [
-                // [container, namePrefix, minH, maxH, scaleMin, scaleMax]
-                [oakContainer,   'oak',   3.0, 10.0, 1.3, 1.9],
-                [mapleContainer, 'maple', 3.5, 10.5, 1.2, 1.8],
-                [pineContainer,  'pine',  4.0, 11.0, 1.1, 1.6],
+            const getTerrainSlope = (wx: number, wz: number): number => {
+                const hx = (this.getTerrainHeightAt(wx + 1.0, wz) - this.getTerrainHeightAt(wx - 1.0, wz)) * 0.5;
+                const hz = (this.getTerrainHeightAt(wx, wz + 1.0) - this.getTerrainHeightAt(wx, wz - 1.0)) * 0.5;
+                return Math.hypot(hx, hz);
+            };
+
+            interface TreeDistributionSpec {
+                container: BABYLON.AssetContainer;
+                prefix: string;
+                spec: IslandSpec;
+                count: number;
+                minH: number;
+                maxH: number;
+                scaleMin: number;
+                scaleMax: number;
+                rMinFrac: number;
+                rMaxFrac: number;
+                sinkY: number;
+                swayAmp: number;
+                castShadow: boolean;
+                maxSlope: number;
+                leanAmp: number;
+                multiVariant?: boolean;
+            }
+
+            const treeDistributions: TreeDistributionSpec[] = [
+                // Main island photoreal Poly Haven PBR coastal canopy trees & tropical palms
+                { container: phIslandTree1Container, prefix: 'phTree1', spec: MAIN_ISLAND, count: 16, minH: 2.2, maxH: 10.6, scaleMin: 1.35, scaleMax: 1.90, rMinFrac: 0.12, rMaxFrac: 0.72, sinkY: 0.35, swayAmp: 0.011, castShadow: true, maxSlope: 0.75, leanAmp: 0.05 },
+                { container: phIslandTree2Container, prefix: 'phTree2', spec: MAIN_ISLAND, count: 14, minH: 2.0, maxH: 10.2, scaleMin: 1.45, scaleMax: 2.05, rMinFrac: 0.15, rMaxFrac: 0.74, sinkY: 0.35, swayAmp: 0.012, castShadow: true, maxSlope: 0.75, leanAmp: 0.06 },
+                { container: phIslandTree3Container, prefix: 'phTree3', spec: MAIN_ISLAND, count: 14, minH: 2.4, maxH: 10.8, scaleMin: 1.55, scaleMax: 2.25, rMinFrac: 0.10, rMaxFrac: 0.68, sinkY: 0.30, swayAmp: 0.012, castShadow: true, maxSlope: 0.78, leanAmp: 0.05 },
+                { container: phPachiraContainer, prefix: 'phPachira', spec: MAIN_ISLAND, count: 14, minH: 1.85, maxH: 8.8, scaleMin: 2.10, scaleMax: 2.95, rMinFrac: 0.20, rMaxFrac: 0.76, sinkY: 0.25, swayAmp: 0.016, castShadow: true, maxSlope: 0.74, leanAmp: 0.06 },
+                { container: chileanPalmContainer, prefix: 'chileanPalm', spec: MAIN_ISLAND, count: 12, minH: 1.85, maxH: 7.8, scaleMin: 0.75, scaleMax: 1.04, rMinFrac: 0.24, rMaxFrac: 0.78, sinkY: 0.45, swayAmp: 0.018, castShadow: true, maxSlope: 0.70, leanAmp: 0.10 },
+                { container: treeFernContainer, prefix: 'treeFern', spec: MAIN_ISLAND, count: 12, minH: 2.8, maxH: 10.2, scaleMin: 0.75, scaleMax: 1.05, rMinFrac: 0.14, rMaxFrac: 0.64, sinkY: 0.40, swayAmp: 0.022, castShadow: true, maxSlope: 0.76, leanAmp: 0.06 },
+                { container: bananaContainer, prefix: 'banana', spec: MAIN_ISLAND, count: 16, minH: 2.1, maxH: 7.6, scaleMin: 0.88, scaleMax: 1.25, rMinFrac: 0.20, rMaxFrac: 0.72, sinkY: 0.30, swayAmp: 0.024, castShadow: true, maxSlope: 0.74, leanAmp: 0.05 },
+                // Dry berm palms, agaves & tropical understory shrubs (strictly above wave wash zone!)
+                { container: palmSaplingContainer, prefix: 'palmSapling', spec: MAIN_ISLAND, count: 16, minH: 1.50, maxH: 2.85, scaleMin: 0.95, scaleMax: 1.32, rMinFrac: 0.50, rMaxFrac: 0.86, sinkY: 0.22, swayAmp: 0.030, castShadow: true, maxSlope: 0.65, leanAmp: 0.14 },
+                { container: agaveContainer, prefix: 'agave', spec: MAIN_ISLAND, count: 14, minH: 1.55, maxH: 5.2, scaleMin: 0.95, scaleMax: 1.38, rMinFrac: 0.40, rMaxFrac: 0.84, sinkY: 0.14, swayAmp: 0.018, castShadow: true, maxSlope: 0.75, leanAmp: 0.04 },
+                { container: tiPlantContainer, prefix: 'tiPlant', spec: MAIN_ISLAND, count: 22, minH: 1.85, maxH: 8.2, scaleMin: 0.90, scaleMax: 1.28, rMinFrac: 0.16, rMaxFrac: 0.76, sinkY: 0.18, swayAmp: 0.030, castShadow: true, maxSlope: 0.80, leanAmp: 0.04 },
+                { container: taroContainer, prefix: 'taro', spec: MAIN_ISLAND, count: 24, minH: 1.80, maxH: 7.5, scaleMin: 1.25, scaleMax: 1.75, rMinFrac: 0.18, rMaxFrac: 0.78, sinkY: 0.12, swayAmp: 0.032, castShadow: false, maxSlope: 0.80, leanAmp: 0.03 },
+                { container: floweringShrubContainer, prefix: 'flowerShrub', spec: MAIN_ISLAND, count: 22, minH: 1.80, maxH: 8.4, scaleMin: 1.35, scaleMax: 1.90, rMinFrac: 0.15, rMaxFrac: 0.78, sinkY: 0.12, swayAmp: 0.030, castShadow: false, maxSlope: 0.82, leanAmp: 0.02 },
+                { container: tropicalBushContainer, prefix: 'tropBush', spec: MAIN_ISLAND, count: 44, minH: 1.85, maxH: 8.6, scaleMin: 1.85, scaleMax: 2.70, rMinFrac: 0.12, rMaxFrac: 0.76, sinkY: 0.12, swayAmp: 0.032, castShadow: false, maxSlope: 0.85, leanAmp: 0.02 },
+                // Photoreal CC0 Smuggler's Cove botanical layer (Poly Haven textured PBR cutouts)
+                { container: phFernContainer, prefix: 'phFern', spec: MAIN_ISLAND, count: 36, minH: 1.80, maxH: 9.2, scaleMin: 2.30, scaleMax: 3.30, rMinFrac: 0.14, rMaxFrac: 0.76, sinkY: 0.08, swayAmp: 0.034, castShadow: false, maxSlope: 0.82, leanAmp: 0.02, multiVariant: true },
+                { container: phCalatheaContainer, prefix: 'phCalathea', spec: MAIN_ISLAND, count: 30, minH: 1.75, maxH: 8.5, scaleMin: 2.40, scaleMax: 3.40, rMinFrac: 0.16, rMaxFrac: 0.78, sinkY: 0.08, swayAmp: 0.032, castShadow: false, maxSlope: 0.80, leanAmp: 0.02, multiVariant: true },
+                { container: phAnthuriumContainer, prefix: 'phAnthurium', spec: MAIN_ISLAND, count: 26, minH: 1.75, maxH: 7.8, scaleMin: 2.10, scaleMax: 3.00, rMinFrac: 0.20, rMaxFrac: 0.78, sinkY: 0.08, swayAmp: 0.030, castShadow: false, maxSlope: 0.80, leanAmp: 0.02, multiVariant: true },
+                { container: phShrubContainer, prefix: 'phShrub', spec: MAIN_ISLAND, count: 28, minH: 1.85, maxH: 8.8, scaleMin: 2.80, scaleMax: 3.90, rMinFrac: 0.15, rMaxFrac: 0.78, sinkY: 0.10, swayAmp: 0.032, castShadow: false, maxSlope: 0.82, leanAmp: 0.02, multiVariant: true },
+                // Sea-Stack Atoll secondary island photoreal canopy & tropical foliage
+                { container: phIslandTree1Container, prefix: 'atollPhTree1', spec: ATOLL_ISLAND, count: 4, minH: 2.0, maxH: 6.8, scaleMin: 1.25, scaleMax: 1.65, rMinFrac: 0.15, rMaxFrac: 0.65, sinkY: 0.30, swayAmp: 0.011, castShadow: true, maxSlope: 0.75, leanAmp: 0.05 },
+                { container: phIslandTree2Container, prefix: 'atollPhTree2', spec: ATOLL_ISLAND, count: 4, minH: 1.9, maxH: 6.4, scaleMin: 1.35, scaleMax: 1.75, rMinFrac: 0.20, rMaxFrac: 0.68, sinkY: 0.30, swayAmp: 0.012, castShadow: true, maxSlope: 0.75, leanAmp: 0.06 },
+                { container: phPachiraContainer, prefix: 'atollPachira', spec: ATOLL_ISLAND, count: 4, minH: 1.8, maxH: 5.8, scaleMin: 1.95, scaleMax: 2.60, rMinFrac: 0.22, rMaxFrac: 0.72, sinkY: 0.25, swayAmp: 0.016, castShadow: true, maxSlope: 0.75, leanAmp: 0.06 },
+                { container: chileanPalmContainer, prefix: 'atollChileanPalm', spec: ATOLL_ISLAND, count: 4, minH: 1.8, maxH: 5.8, scaleMin: 0.68, scaleMax: 0.92, rMinFrac: 0.28, rMaxFrac: 0.76, sinkY: 0.40, swayAmp: 0.018, castShadow: true, maxSlope: 0.72, leanAmp: 0.09 },
+                { container: bananaContainer, prefix: 'atollBanana', spec: ATOLL_ISLAND, count: 5, minH: 1.9, maxH: 5.6, scaleMin: 0.82, scaleMax: 1.15, rMinFrac: 0.20, rMaxFrac: 0.72, sinkY: 0.28, swayAmp: 0.024, castShadow: true, maxSlope: 0.76, leanAmp: 0.05 },
+                { container: palmSaplingContainer, prefix: 'atollSapling', spec: ATOLL_ISLAND, count: 6, minH: 1.45, maxH: 2.4, scaleMin: 0.90, scaleMax: 1.20, rMinFrac: 0.50, rMaxFrac: 0.84, sinkY: 0.20, swayAmp: 0.032, castShadow: true, maxSlope: 0.65, leanAmp: 0.14 },
+                { container: agaveContainer, prefix: 'atollAgave', spec: ATOLL_ISLAND, count: 5, minH: 1.45, maxH: 3.8, scaleMin: 0.90, scaleMax: 1.28, rMinFrac: 0.45, rMaxFrac: 0.84, sinkY: 0.14, swayAmp: 0.018, castShadow: true, maxSlope: 0.75, leanAmp: 0.04 },
+                { container: phFernContainer, prefix: 'atollPhFern', spec: ATOLL_ISLAND, count: 10, minH: 1.7, maxH: 6.2, scaleMin: 2.10, scaleMax: 3.10, rMinFrac: 0.16, rMaxFrac: 0.74, sinkY: 0.08, swayAmp: 0.034, castShadow: false, maxSlope: 0.82, leanAmp: 0.02, multiVariant: true },
+                { container: phCalatheaContainer, prefix: 'atollPhCalathea', spec: ATOLL_ISLAND, count: 8, minH: 1.7, maxH: 5.8, scaleMin: 2.20, scaleMax: 3.10, rMinFrac: 0.18, rMaxFrac: 0.76, sinkY: 0.08, swayAmp: 0.032, castShadow: false, maxSlope: 0.80, leanAmp: 0.02, multiVariant: true },
+                { container: tropicalBushContainer, prefix: 'atollBush', spec: ATOLL_ISLAND, count: 14, minH: 1.75, maxH: 6.4, scaleMin: 1.65, scaleMax: 2.35, rMinFrac: 0.15, rMaxFrac: 0.74, sinkY: 0.12, swayAmp: 0.032, castShadow: false, maxSlope: 0.85, leanAmp: 0.02 },
             ];
 
             let treeIdx = 0;
-            for (const [tCont, tName, minH, maxH, sMin, sMax] of jungledTreeContainers) {
+            for (const cfg of treeDistributions) {
                 let placed = 0;
-                for (let step = 0; step < 220 && placed < 14; step++) {
-                    const ang = step * 2.3999632 + tName.charCodeAt(0) * 0.3;
-                    const rFrac = 0.12 + ((step * 23) % 21) * (0.60 / 20);
-                    const r = MAIN_ISLAND.radius * rFrac;
-                    const wx = MAIN_ISLAND.centerX + Math.cos(ang) * r;
-                    const wz = MAIN_ISLAND.centerZ + Math.sin(ang) * r;
-                    if (isNearCoveTrail(wx, wz)) continue;
+                const seedOffset = cfg.prefix.split('').reduce((acc, ch) => acc + ch.charCodeAt(0) * 0.17, cfg.spec.seed);
+                for (let step = 0; step < 260 && placed < cfg.count; step++) {
+                    const ang = step * 2.3999632 + seedOffset;
+                    const rFrac = cfg.rMinFrac + ((step * 23) % 21) * ((cfg.rMaxFrac - cfg.rMinFrac) / 20);
+                    const r = cfg.spec.radius * rFrac;
+                    const wx = cfg.spec.centerX + Math.cos(ang) * r;
+                    const wz = cfg.spec.centerZ + Math.sin(ang) * r;
+                    if (cfg.spec.hasCove && isNearCoveTrail(wx, wz)) continue;
                     const h = this.getTerrainHeightAt(wx, wz);
-                    if (h >= minH && h <= maxH) {
-                        const s = sMin + ((placed * 37) % 11) * 0.08 * (sMax - sMin);
-                        const leanX = Math.cos(ang) * 0.06;
-                        const leanZ = Math.sin(ang) * 0.06;
-                        spawnProp(tCont, `${tName}_${treeIdx++}`, wx, h - 0.7, wz, ang + 0.9, s, true, false, 0.012, leanX, leanZ);
-                        placed++;
+                    if (h < cfg.minH || h > cfg.maxH) continue;
+                    if (getTerrainSlope(wx, wz) > cfg.maxSlope) continue;
+
+                    const frac = ((placed * 37 + step) % 13) / 12;
+                    const sc = cfg.scaleMin + frac * (cfg.scaleMax - cfg.scaleMin);
+                    const leanX = Math.cos(ang) * cfg.leanAmp;
+                    const leanZ = Math.sin(ang) * cfg.leanAmp;
+                    spawnProp(
+                        cfg.container,
+                        `${cfg.prefix}_${treeIdx++}`,
+                        wx,
+                        h - cfg.sinkY,
+                        wz,
+                        ang + 0.9,
+                        sc,
+                        cfg.castShadow,
+                        false,
+                        cfg.swayAmp,
+                        leanX,
+                        leanZ,
+                        false,
+                        cfg.multiVariant ? placed : -1
+                    );
+                    placed++;
+                }
+            }
+
+            // Lush framing grove & photoreal tropical flora around cove backdrop behind campfire
+            const coveBackdropTrees: Array<[BABYLON.AssetContainer, string, number, number, number, boolean, number]> = [
+                [phIslandTree1Container, 'coveBackdropTree1', campX - fwdX * 7.2 + sideX * 6.0, campZ - fwdZ * 7.2 + sideZ * 6.0, 1.55, true, -1],
+                [phIslandTree2Container, 'coveBackdropTree2', campX - fwdX * 6.8 - sideX * 6.5, campZ - fwdZ * 6.8 - sideZ * 6.5, 1.65, true, -1],
+                [phPachiraContainer, 'coveBackdropPachira', campX - fwdX * 4.5 + sideX * 7.8, campZ - fwdZ * 4.5 + sideZ * 7.8, 2.45, true, -1],
+                [bananaContainer, 'coveBackdropBanana0', campX - fwdX * 5.0 - sideX * 4.2, campZ - fwdZ * 5.0 - sideZ * 4.2, 1.10, true, -1],
+                [bananaContainer, 'coveBackdropBanana1', campX - fwdX * 3.8 + sideX * 4.8, campZ - fwdZ * 3.8 + sideZ * 4.8, 1.02, true, -1],
+                [phAnthuriumContainer, 'coveAccentAnthurium0', campX + sideX * 3.4 - fwdX * 1.2, campZ + sideZ * 3.4 - fwdZ * 1.2, 2.55, false, 0],
+                [phCalatheaContainer, 'coveAccentCalathea0', campX - sideX * 3.6 - fwdX * 1.8, campZ - sideZ * 3.6 - fwdZ * 1.8, 2.75, false, 1],
+                [phFernContainer, 'coveAccentFern0', campX + sideX * 2.8 + fwdX * 2.4, campZ + sideZ * 2.8 + fwdZ * 2.4, 2.65, false, 0],
+                [tiPlantContainer, 'coveAccentTi0', campX - sideX * 4.2 + fwdX * 2.1, campZ - sideZ * 4.2 + fwdZ * 2.1, 1.18, true, -1],
+            ];
+            for (const [cont, name, tx, tz, sc, castSh, vPick] of coveBackdropTrees) {
+                const th = this.getTerrainHeightAt(tx, tz);
+                if (th > 1.2) {
+                    spawnProp(cont, name, tx, th - (vPick >= 0 ? 0.08 : 0.35), tz, bayDirAngle + tx * 0.2, sc, castSh, false, 0.022, 0, 0, false, vPick);
+                }
+            }
+
+            // ───────────────────────────────────────────────────────────────────────────
+            // 6. ANCHORED BOATS & SHIPS (Buoyancy wave-riding + pier skiff)
+            // ───────────────────────────────────────────────────────────────────────────
+            const findDeepWaterSpot = (ang: number, minDist: number, maxFloorH: number): [number, number] => {
+                for (let rr = minDist; rr < 140; rr += 2.5) {
+                    const wx = MAIN_ISLAND.centerX + Math.cos(ang) * rr;
+                    const wz = MAIN_ISLAND.centerZ + Math.sin(ang) * rr;
+                    if (this.getTerrainHeightAt(wx, wz) <= maxFloorH) {
+                        return [wx, wz];
                     }
                 }
-            }
+                return [MAIN_ISLAND.centerX + Math.cos(ang) * minDist, MAIN_ISLAND.centerZ + Math.sin(ang) * minDist];
+            };
 
-            // Palm saplings along beach berm edge
-            let saplingIdx = 0;
-            for (let i = 0; i < 100 && saplingIdx < 18; i++) {
-                const ang = i * 2.3999632 + 2.1;
-                const r = MAIN_ISLAND.radius * (0.55 + ((i * 11) % 15) * 0.028);
-                const wx = MAIN_ISLAND.centerX + Math.cos(ang) * r;
-                const wz = MAIN_ISLAND.centerZ + Math.sin(ang) * r;
-                if (isNearCoveTrail(wx, wz)) continue;
-                const h = this.getTerrainHeightAt(wx, wz);
-                if (h >= 0.9 && h <= 2.4) {
-                    const leanX = Math.cos(ang) * 0.18;
-                    const leanZ = Math.sin(ang) * 0.18;
-                    spawnProp(palmSaplingContainer, `palmSapling_${saplingIdx++}`, wx, h - 0.3, wz, ang + 1.8, 0.9 + (i % 4) * 0.12, true, false, 0.028, leanX, leanZ);
-                }
-            }
-
-            // Dense tropical bushes mixed across mid-hillsides
-            let bushIdx = 0;
-            for (let i = 0; i < 240 && bushIdx < 55; i++) {
-                const ang = i * 2.3999632 + 0.6;
-                const r = 5.0 + ((i * 17) % 24) * 1.62;
-                const wx = MAIN_ISLAND.centerX + Math.cos(ang) * r;
-                const wz = MAIN_ISLAND.centerZ + Math.sin(ang) * r;
-                if (isNearCoveTrail(wx, wz)) continue;
-                const h = this.getTerrainHeightAt(wx, wz);
-                if (h >= 1.5 && h <= 8.5) {
-                    spawnProp(tropicalBushContainer, `tropBush_${bushIdx++}`, wx, h - 0.15, wz, ang, 2.2 + (i % 5) * 0.35, false, false, 0.038);
-                }
-            }
-
-            // ───────────────────────────────────────────────────────────────────────────
-            // 6. ANCHORED BOATS & SHIPS
-            // ───────────────────────────────────────────────────────────────────────────
-
-            // Helper: spawn a floating vessel and register simple buoyancy bob
-            const spawnBoat = (
+            const spawnOpenWaterBoat = (
                 container: BABYLON.AssetContainer,
                 name: string,
                 x: number,
                 z: number,
                 rotY: number,
                 scale: number,
-                draftY: number          // resting Y (at waterline)
-            ): BABYLON.TransformNode => {
-                const node = spawnProp(container, name, x, draftY, z, rotY, scale, true, true);
-                this._boatBuoyNodes.push({ node, phaseOffset: Math.abs(x * 0.31 + z * 0.47), baseY: draftY });
-                return node;
+                yOffset: number,
+                probeFwdZ: number,
+                probeSideX: number
+            ): void => {
+                const node = spawnProp(container, name, x, yOffset, z, rotY, scale, true, true);
+                node.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(0, rotY, 0);
+                this._buoyancy.addMesh(
+                    node,
+                    {
+                        v1: new BABYLON.Vector3(0, 0, 0),
+                        v2: new BABYLON.Vector3(0, 0, probeFwdZ / scale),
+                        v3: new BABYLON.Vector3(probeSideX / scale, 0, 0),
+                    },
+                    yOffset,
+                    2
+                );
             };
 
-            // Rowboat — tied to the pier end
-            const rowX = pierEndX + Math.cos(bayDirAngle + Math.PI * 0.5) * 2.4;
-            const rowZ = pierEndZ + Math.sin(bayDirAngle + Math.PI * 0.5) * 2.4;
-            spawnBoat(rowboatContainer, 'pierRowboat', rowX, rowZ, bayDirAngle + 0.3, 1.1, -0.22);
+            // Rowboat — moored beside outer pier end (gentle harbor ripple so it stays clear of pilings)
+            let rowDist = 0.8;
+            let rowX = pierEndX + sideX * 2.8 + fwdX * rowDist;
+            let rowZ = pierEndZ + sideZ * 2.8 + fwdZ * rowDist;
+            while (this.getTerrainHeightAt(rowX, rowZ) > -0.34 && rowDist < 8) {
+                rowDist += 0.8;
+                rowX = pierEndX + sideX * 2.8 + fwdX * rowDist;
+                rowZ = pierEndZ + sideZ * 2.8 + fwdZ * rowDist;
+            }
+            const rowRotY = pierYaw + 0.25;
+            const rowNode = spawnProp(rowboatContainer, 'pierRowboat', rowX, -0.14, rowZ, rowRotY, 1.25, true, true);
+            this._mooredBoats.push({
+                node: rowNode,
+                baseY: -0.14,
+                phaseOffset: Math.abs(rowX * 0.31 + rowZ * 0.47),
+                baseRotY: rowRotY,
+            });
 
-            // Longboat — anchored ~22m off the cove mouth toward open sea
-            const longX = MAIN_ISLAND.centerX + Math.cos(COVE_BAY_ANGLE) * 62;
-            const longZ = MAIN_ISLAND.centerZ + Math.sin(COVE_BAY_ANGLE) * 62;
-            spawnBoat(longboatContainer, 'anchoredLongboat', longX, longZ, COVE_BAY_ANGLE + 0.6, 1.0, -0.6);
+            // Ship's Longboat — anchored off port approach into Crescent Cove
+            const [longX, longZ] = findDeepWaterSpot(COVE_BAY_ANGLE + 0.28, 56, -2.0);
+            spawnOpenWaterBoat(longboatContainer, 'anchoredLongboat', longX, longZ, pierYaw - 0.55, 1.15, -0.22, 3.2, 1.5);
 
-            // Small fishing boat — bobbing ~18m off cove, perpendicular to channel
-            const fishBX = MAIN_ISLAND.centerX + Math.cos(COVE_BAY_ANGLE + 0.85) * 55;
-            const fishBZ = MAIN_ISLAND.centerZ + Math.sin(COVE_BAY_ANGLE + 0.85) * 55;
-            spawnBoat(fishingBoatContainer, 'coveFishingBoat', fishBX, fishBZ, COVE_BAY_ANGLE + 2.1, 1.0, -0.8);
+            // Fishing Boat — anchored off starboard lagoon channel
+            const [fishBX, fishBZ] = findDeepWaterSpot(COVE_BAY_ANGLE - 0.34, 54, -2.0);
+            spawnOpenWaterBoat(fishingBoatContainer, 'coveFishingBoat', fishBX, fishBZ, pierYaw + 1.15, 1.05, -0.32, 3.2, 1.4);
 
-            // Brigantine — large ship anchored far out, atmospheric
-            const brigX = MAIN_ISLAND.centerX + Math.cos(COVE_BAY_ANGLE - 0.4) * 110;
-            const brigZ = MAIN_ISLAND.centerZ + Math.sin(COVE_BAY_ANGLE - 0.4) * 110;
-            spawnBoat(brigantineContainer, 'anchoredBrigantine', brigX, brigZ, COVE_BAY_ANGLE + Math.PI * 0.5, 1.0, -1.4);
+            // Companion Pirate Brigantine — anchored in deep outer channel off port flank
+            const [brigX, brigZ] = findDeepWaterSpot(COVE_BAY_ANGLE + 0.52, 92, -5.0);
+            spawnOpenWaterBoat(brigantineContainer, 'anchoredBrigantine', brigX, brigZ, pierYaw - 0.95, 1.45, -0.75, 4.5, 4.5);
 
             // ───────────────────────────────────────────────────────────────────────────
-            // 7. NPC PEOPLE on beach & pier
+            // 7. ANIMATED NPC PEOPLE on Pier & Cove Beach (true ~1.7m–1.8m scale)
             // ───────────────────────────────────────────────────────────────────────────
-
-            const spawnNPC = (
+            const spawnIslandNPC = (
                 container: BABYLON.AssetContainer,
                 name: string,
                 x: number,
                 y: number,
                 z: number,
                 rotY: number,
-                scale: number
+                scale: number,
+                style: NPCPoseStyle,
+                patrolStart?: BABYLON.Vector2,
+                patrolEnd?: BABYLON.Vector2
             ): void => {
-                const node = spawnProp(container, name, x, y, z, rotY, scale, true, false);
+                const inst = container.instantiateModelsToScene(
+                    (sourceName) => `${name}_${sourceName}`,
+                    false,
+                    { doNotInstantiate: true }
+                );
+                const node = new BABYLON.TransformNode(name, this._scene);
+                node.parent = this._root;
+                for (const rn of inst.rootNodes) {
+                    rn.parent = node;
+                }
+                node.position.set(x, y, z);
+                node.rotation.set(0, rotY, 0);
+                node.scaling.setAll(scale);
+                this._registerInstanceForScene(node, true, false);
+
+                if (style === 'patrol') {
+                    const walkGroup = inst.animationGroups.find((ag) => ag.name.toLowerCase().includes('walk')) ?? inst.animationGroups[0];
+                    for (const ag of inst.animationGroups) {
+                        if (ag !== walkGroup) ag.stop();
+                    }
+                    if (walkGroup) {
+                        walkGroup.loopAnimation = true;
+                        walkGroup.start(true, 0.78);
+                    }
+                    this._npcs.push({
+                        node,
+                        baseRotY: rotY,
+                        baseY: y,
+                        phase: 0,
+                        style,
+                        baseSpineX: 0,
+                        baseHeadY: 0,
+                        bones: {},
+                        patrolStart,
+                        patrolEnd,
+                        patrolSpeed: 0.85,
+                    });
+                    return;
+                }
+
+                // Freeze baked animations (e.g. fisherman Walk) for stationary NPCs and pose bones out of T-pose
+                for (const ag of inst.animationGroups) {
+                    ag.stop();
+                }
+
+                const bySuffix = (suffix: string): BABYLON.TransformNode | undefined =>
+                    this._scene.getTransformNodeByName(`${name}_${suffix}`) ?? undefined;
+
+                const spine = bySuffix('Spine');
+                const spine2 = bySuffix('Spine2');
+                const head = bySuffix('Head');
+                const leftShoulder = bySuffix('LeftShoulder');
+                const rightShoulder = bySuffix('RightShoulder');
+                const leftArm = bySuffix('LeftArm');
+                const rightArm = bySuffix('RightArm');
+                const leftForeArm = bySuffix('LeftForeArm');
+                const rightForeArm = bySuffix('RightForeArm');
+                const leftUpLeg = bySuffix('LeftUpLeg');
+                const rightUpLeg = bySuffix('RightUpLeg');
+
+                // Natural relaxed shoulder drop & arms lowered cleanly down out of horizontal T-pose
+                this._setBoneEuler(leftShoulder, 0, 0, -0.08);
+                this._setBoneEuler(rightShoulder, 0, 0, 0.08);
+
+                let baseSpineX = 0.03;
+                let baseHeadY = 0;
+                if (style === 'lookout') {
+                    // One hand resting relaxed, slightly staggered heroic lookout stance
+                    this._setBoneEuler(leftArm, -0.10, 0.05, -1.28);
+                    this._setBoneEuler(rightArm, -0.24, -0.10, 1.24);
+                    this._setBoneEuler(leftForeArm, 0, -0.32, 0);
+                    this._setBoneEuler(rightForeArm, 0, 0.55, 0);
+                    this._setBoneEuler(leftUpLeg, -0.05, 0.06, 0.03);
+                    this._setBoneEuler(rightUpLeg, 0.06, -0.05, -0.03);
+                    baseSpineX = 0.04;
+                } else if (style === 'officer') {
+                    // Disciplined upright harbor sentinel with arms slightly behind flanks
+                    this._setBoneEuler(leftArm, 0.08, -0.08, -1.34);
+                    this._setBoneEuler(rightArm, 0.08, 0.08, 1.34);
+                    this._setBoneEuler(leftForeArm, 0, -0.45, 0);
+                    this._setBoneEuler(rightForeArm, 0, 0.45, 0);
+                    this._setBoneEuler(leftUpLeg, 0, 0.04, 0.02);
+                    this._setBoneEuler(rightUpLeg, 0, -0.04, -0.02);
+                    baseSpineX = -0.02;
+                } else if (style === 'trader') {
+                    // Expressive merchant pose tilted slightly toward treasure & camp
+                    this._setBoneEuler(leftArm, -0.28, 0.12, -1.22);
+                    this._setBoneEuler(rightArm, -0.14, -0.06, 1.28);
+                    this._setBoneEuler(leftForeArm, 0, -0.68, 0);
+                    this._setBoneEuler(rightForeArm, 0, 0.38, 0);
+                    this._setBoneEuler(leftUpLeg, -0.04, 0.08, 0.02);
+                    this._setBoneEuler(rightUpLeg, 0.05, -0.06, -0.02);
+                    baseSpineX = 0.05;
+                    baseHeadY = 0.12;
+                } else if (style === 'fisher') {
+                    // Leaning comfortably over the pier end watching fish in the bay
+                    this._setBoneEuler(leftArm, -0.26, 0.08, -1.24);
+                    this._setBoneEuler(rightArm, -0.32, -0.10, 1.22);
+                    this._setBoneEuler(leftForeArm, 0, -0.58, 0);
+                    this._setBoneEuler(rightForeArm, 0, 0.62, 0);
+                    this._setBoneEuler(leftUpLeg, -0.06, 0.04, 0.02);
+                    this._setBoneEuler(rightUpLeg, 0.06, -0.04, -0.02);
+                    baseSpineX = 0.10;
+                } else {
+                    // Casual dock/beach crewman
+                    this._setBoneEuler(leftArm, -0.12, 0.04, -1.30);
+                    this._setBoneEuler(rightArm, -0.16, -0.06, 1.28);
+                    this._setBoneEuler(leftForeArm, 0, -0.30, 0);
+                    this._setBoneEuler(rightForeArm, 0, 0.40, 0);
+                    this._setBoneEuler(leftUpLeg, -0.04, 0.05, 0.02);
+                    this._setBoneEuler(rightUpLeg, 0.04, -0.04, -0.02);
+                }
+
+                this._setBoneEuler(spine, baseSpineX, 0, 0);
+                this._setBoneEuler(head, 0, baseHeadY, 0);
+
                 this._npcs.push({
                     node,
                     baseRotY: rotY,
                     baseY: y,
                     phase: Math.abs(x * 0.53 + z * 0.37),
+                    style,
+                    baseSpineX,
+                    baseHeadY,
+                    bones: { spine, spine2, head, leftArm, rightArm, leftForeArm, rightForeArm },
                 });
             };
 
-            // Pirate deckhands on pier (scale 1.0 — they're correct size ~1.7m)
-            const deckX0 = pierBaseX + Math.cos(bayDirAngle) * 1.5;
-            const deckZ0 = pierBaseZ + Math.sin(bayDirAngle) * 1.5;
-            spawnNPC(deckhHandContainer, 'deckhand_0', deckX0, 0.52, deckZ0, bayDirAngle + Math.PI, 1.0);
+            // 1. Pirate Deckhand — mid-pier lookout facing bay & flagship (standing cleanly ON 0.82m pier planks)
+            const deck0X = pierBaseX + fwdX * 0.85 - sideX * 0.72;
+            const deck0Z = pierBaseZ + fwdZ * 0.85 - sideZ * 0.72;
+            spawnIslandNPC(deckhHandContainer, 'deckhand_0', deck0X, pierDeckY, deck0Z, pierYaw - 0.25, 1.0, 'lookout');
 
-            const deckX1 = pierEndX - Math.cos(bayDirAngle) * 0.8;
-            const deckZ1 = pierEndZ - Math.sin(bayDirAngle) * 0.8;
-            spawnNPC(deckhHandContainer, 'deckhand_1', deckX1, 0.52, deckZ1, bayDirAngle + 0.5, 1.0);
+            // 2. Fisherman — outer pier end looking over crystal cove waters
+            const fishX = pierEndX + fwdX * 0.92 + sideX * 0.52;
+            const fishZ = pierEndZ + fwdZ * 0.92 + sideZ * 0.52;
+            spawnIslandNPC(fisherContainer, 'pierFisherman', fishX, pierDeckY, fishZ, pierYaw + 0.18, 1.0, 'fisher');
 
-            // Cove Trader near campfire (scale 4.5 — model is in dm scale ~0.3m)
-            const traderH = Math.max(1.0, this.getTerrainHeightAt(campX - 2.5, campZ + 1.0));
-            spawnNPC(traderContainer, 'coveTrader', campX - 2.5, traderH - 0.08, campZ + 1.0, bayDirAngle + 2.4, 4.5);
+            // 3. Naval Harbor Officer — sentinel beside pier shore landing
+            const navyX = pierBaseX - fwdX * 1.15 + sideX * 1.85;
+            const navyZ = pierBaseZ - fwdZ * 1.15 + sideZ * 1.85;
+            const navyY = Math.max(0.25, this.getTerrainHeightAt(navyX, navyZ)) - 0.03;
+            spawnIslandNPC(navyContainer, 'navalOfficer', navyX, navyY, navyZ, pierYaw + 0.28, 1.02, 'officer');
 
-            // Naval Officer at pier entrance sentinel (scale 4.0)
-            const navyH = Math.max(1.0, this.getTerrainHeightAt(pierBaseX + 2.0, pierBaseZ - 1.5));
-            spawnNPC(navyContainer, 'navalOfficer', pierBaseX + 2.0, navyH - 0.06, pierBaseZ - 1.5, bayDirAngle - 0.6, 4.0);
+            // 4. Cove Trader — beside campfire & treasure chest
+            const traderX = campX - sideX * 2.1 - fwdX * 0.4;
+            const traderZ = campZ - sideZ * 2.1 - fwdZ * 0.4;
+            const traderY = Math.max(0.25, this.getTerrainHeightAt(traderX, traderZ)) - 0.03;
+            const traderYaw = Math.atan2(chestX - traderX, chestZ - traderZ);
+            spawnIslandNPC(traderContainer, 'coveTrader', traderX, traderY, traderZ, traderYaw, 1.0, 'trader');
 
-            // Fisherman at pier end, facing ocean (scale 4.0, has Walk anim — play idle pose)
-            const fishNH = 0.46;  // slightly below pier deck to look seated-ish
-            const fishNX = pierEndX + Math.cos(bayDirAngle) * 1.2;
-            const fishNZ = pierEndZ + Math.sin(bayDirAngle) * 1.2;
-            spawnNPC(fisherContainer, 'pierFisherman', fishNX, fishNH, fishNZ, bayDirAngle + Math.PI * 0.9, 4.0);
+            // 5. Beach Deckhand — tending barrels beside pier entrance
+            const deck1X = pierBaseX - fwdX * 1.6 + sideX * 0.2;
+            const deck1Z = pierBaseZ - fwdZ * 1.6 + sideZ * 0.2;
+            const deck1Y = Math.max(0.25, this.getTerrainHeightAt(deck1X, deck1Z)) - 0.03;
+            const deck1Yaw = Math.atan2(pierBaseX - deck1X, pierBaseZ - deck1Z);
+            spawnIslandNPC(deckhHandContainer, 'deckhand_1', deck1X, deck1Y, deck1Z, deck1Yaw, 0.98, 'relaxed');
+
+            // 6. Walking Coastal Fisherman — strolling smoothly along the flat sandy cove beach arc
+            const patrolA = new BABYLON.Vector2(pierBaseX - fwdX * 1.6 + sideX * 1.6, pierBaseZ - fwdZ * 1.6 + sideZ * 1.6);
+            const patrolB = new BABYLON.Vector2(pierBaseX - fwdX * 1.6 + sideX * 7.5, pierBaseZ - fwdZ * 1.6 + sideZ * 7.5);
+            const patrolStartY = Math.max(0.25, this.getTerrainHeightAt(patrolA.x, patrolA.y)) - 0.03;
+            const patrolYaw = Math.atan2(patrolB.x - patrolA.x, patrolB.y - patrolA.y);
+            spawnIslandNPC(fisherContainer, 'beachPatrol', patrolA.x, patrolStartY, patrolA.y, patrolYaw, 1.0, 'patrol', patrolA, patrolB);
         } catch (err) {
             console.warn('Failed loading some island world props:', err);
+        }
+    }
+
+    private _setBoneEuler(bone: BABYLON.TransformNode | undefined, rx: number, ry: number, rz: number): void {
+        if (!bone) return;
+        if (!bone.rotationQuaternion) {
+            bone.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(rx, ry, rz);
+        } else {
+            BABYLON.Quaternion.FromEulerAnglesToRef(rx, ry, rz, bone.rotationQuaternion);
         }
     }
 
     public update(dt: number): void {
         this._time += dt;
 
-        // Gentle breeze swaying palms & coastal ferns
+        // Gentle breeze swaying palms, jungle trees & coastal ferns
         for (let i = 0; i < this._swayItems.length; i++) {
             const item = this._swayItems[i];
             const gust = Math.sin(this._time * item.speed + item.phase);
@@ -1053,19 +1382,50 @@ export class PirateIslandWorld {
             this._campfireLight.intensity = 9.0 + Math.sin(this._time * 13.0) * 1.8 + Math.cos(this._time * 23.0) * 1.1;
         }
 
-        // NPC idle sway — gentle breathing/shifting weight
-        for (const npc of this._npcs) {
-            npc.node.rotation.y = npc.baseRotY + Math.sin(this._time * 0.75 + npc.phase) * 0.045;
-            npc.node.position.y = npc.baseY   + Math.sin(this._time * 1.05 + npc.phase * 1.3) * 0.012;
+        // Update animated islanders (idle breathing, head scans & sandy cove patrol)
+        for (let i = 0; i < this._npcs.length; i++) {
+            const npc = this._npcs[i];
+            if (npc.style === 'patrol' && npc.patrolStart && npc.patrolEnd) {
+                const dx = npc.patrolEnd.x - npc.patrolStart.x;
+                const dz = npc.patrolEnd.y - npc.patrolStart.y;
+                const segLen = Math.max(0.5, Math.hypot(dx, dz));
+                const speed = npc.patrolSpeed ?? 0.85;
+                const travelTime = segLen / speed;
+                const cycle = (this._time % (travelTime * 2)) / travelTime;
+                const forward = cycle <= 1.0;
+                const rawT = forward ? cycle : 2.0 - cycle;
+                // Smooth ease near endpoints while keeping constant middle gait
+                const t = rawT * rawT * (3.0 - 2.0 * rawT);
+                const px = npc.patrolStart.x + dx * t;
+                const pz = npc.patrolStart.y + dz * t;
+                const py = Math.max(0.25, this.getTerrainHeightAt(px, pz)) - 0.03;
+                npc.node.position.set(px, py, pz);
+                const dirSign = forward ? 1 : -1;
+                npc.node.rotation.y = Math.atan2(dx * dirSign, dz * dirSign);
+                continue;
+            }
+
+            const breath = Math.sin(this._time * 1.6 + npc.phase);
+            const scan = Math.sin(this._time * 0.52 + npc.phase * 1.7);
+            const sway = Math.cos(this._time * 0.72 + npc.phase);
+            npc.node.rotation.y = npc.baseRotY + sway * 0.04;
+            npc.node.position.y = npc.baseY + breath * 0.008;
+
+            this._setBoneEuler(npc.bones.spine, npc.baseSpineX + breath * 0.018, sway * 0.02, 0);
+            this._setBoneEuler(npc.bones.head, breath * 0.025, npc.baseHeadY + scan * 0.24, 0);
         }
 
-        // Boat gentle bobbing on waves (simple sin approximation)
-        for (const b of this._boatBuoyNodes) {
-            const baseY = b.node.position.y;
-            const phase = b.phaseOffset;
-            b.node.position.y = baseY + Math.sin(this._time * 0.62 + phase) * 0.14;
-            b.node.rotation.z = Math.sin(this._time * 0.48 + phase * 1.2) * 0.025;
-            b.node.rotation.x = Math.cos(this._time * 0.37 + phase * 0.8) * 0.018;
+        // Gentle sheltered-water motion for pier-tied rowboat
+        for (let i = 0; i < this._mooredBoats.length; i++) {
+            const b = this._mooredBoats[i];
+            const waveY = this._buoyancy.enabled
+                ? BABYLON.Scalar.Clamp(this._buoyancy.getWaterHeight(b.node.position) * 0.30, -0.10, 0.22)
+                : 0;
+            const lap = Math.sin(this._time * 1.25 + b.phaseOffset) * 0.04;
+            b.node.position.y = b.baseY + waveY + lap;
+            b.node.rotation.z = Math.sin(this._time * 1.05 + b.phaseOffset * 1.2) * 0.035;
+            b.node.rotation.x = Math.cos(this._time * 0.85 + b.phaseOffset * 0.8) * 0.025;
+            b.node.rotation.y = b.baseRotY + Math.sin(this._time * 0.42 + b.phaseOffset) * 0.04;
         }
 
         // Sync Buoyancy wave offset lightly if needed for shoreline awareness (referenced cleanly)
